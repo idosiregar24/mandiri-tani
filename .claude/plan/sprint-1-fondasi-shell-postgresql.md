@@ -11,65 +11,79 @@ halaman placeholder, dan mematikan PostgreSQL dengan bersih saat ditutup.
 `npm run dist` menghasilkan installer NSIS yang melakukan hal yang sama di
 mesin bersih.
 
-**Ringkasan status:** 0 selesai · 1 sebagian · 30 belum mulai.
+**Ringkasan status (2026-10-24):** 25 selesai · 5 sebagian · 1 belum mulai.
+`npm run dev` sudah dijalankan owner: aplikasi menyala, membuat database sendiri, menampilkan status sistem, dan **uji cetak LX-310 berhasil** (Sprint 0). Sisa: verifikasi manual crash/sleep, build installer (G2).
 
 ## A. Repository & tooling
 
-- [ ] **A1** `git init` di root proyek (`Mandiri Tani/`), `.gitignore` (node_modules, out, dist, `resources/postgres/`, `*.log`, `.env*`, **`.claude/file/`**, `*.i5bu`, `*.dump`), `.editorconfig`, commit awal berisi `.claude/` **tanpa** `.claude/file/` — cek `git status` sebelum commit: tidak boleh ada xlsx/pdf/i5bu data toko
-  - 📌 **Status:** Sebagian (2026-10-24). `git init -b main`, remote `origin` = `https://github.com/idosiregar24/mandiri-tani.git`, `README.md`, `.gitignore` (termasuk `.claude/file/`, `*.i5bu`, `*.dump`, `.claude/settings.local.json`) sudah dibuat; `git add --dry-run .` terverifikasi tidak menyertakan data toko. **Commit & push dilakukan owner sendiri.** `.editorconfig` menyusul bersama scaffold (A2)
-- [ ] **A2** Scaffold `electron-vite` (template React + TypeScript) → struktur `src/main`, `src/preload`, `src/renderer`; tambah `src/server`, `src/shared`, `db/migrations`, `scripts`, `test`
-- [ ] **A3** TypeScript strict di semua tsconfig; path alias `@/*` (renderer) dan `@shared/*`; ESLint + Prettier; script `typecheck`, `lint`, `test`, `dev`, `build`, `dist`
-- [ ] **A4** Vitest terpasang (unit dulu; integrasi DB di D5)
-- [ ] **A5** Isi tabel "Versi terpasang" di `plan/README.md`
+- [x] **A1** `git init` di root proyek, `.gitignore`, `.editorconfig`, commit awal tanpa `.claude/file/`
+  - 📌 `git init -b main` + remote `origin`; `.gitignore` mengecualikan data toko, `node_modules`, `out`, binaries PG (`resources/postgres/{bin,lib,share}` — `VERSION` di-commit), `.cache/`. Commit & push oleh owner
+- [x] **A2** Struktur `src/main`, `src/preload`, `src/renderer`, `src/server`, `src/shared`, `db/migrations`, `scripts`, `test`
+  - 📌 Disusun manual (bukan template `create electron`) agar sesuai PRD §2.5; electron-vite 6 dengan entry default
+- [x] **A3** TypeScript strict, alias `@/*` & `@shared/*`, ESLint + Prettier, script `typecheck`/`lint`/`test`/`dev`/`build`/`dist`
+  - 📌 TypeScript **6.0.3** (typescript-eslint belum mendukung 7). `npm run dev` lewat `scripts/electron-vite.mjs` yang menghapus `ELECTRON_RUN_AS_NODE` (VS Code mewariskannya → Electron jalan sebagai Node)
+- [x] **A4** Vitest terpasang
+  - 📌 Vitest 5, `globalSetup` = satu cluster PostgreSQL sementara (binaries asli); DB baru per file tes
+- [x] **A5** Tabel "Versi terpasang" di `plan/README.md`
 
 ## B. Renderer dasar
 
-- [ ] **B1** Tailwind CSS v4 (`@tailwindcss/vite`), `src/renderer/styles/app.css` dengan token `tani-*` + status (design-standards §1), font Inter self-hosted
-- [ ] **B2** `npx shadcn@latest init` (Vite, Radix), tambah `button`, `card`, `dialog`, `input`, `label`, `sonner`; pastikan alias sesuai folder `components/ui`
-- [ ] **B3** React Router + TanStack Query provider + Zustand terpasang; `lib/api-client.ts` (fetch `/api/v1`, mapping error `{error:{code,message}}`)
-- [ ] **B4** **Boot screen** yang membaca state lifecycle via `window.pos.onLifecycle()` (BOOTING … READY / FATAL) dengan pesan Bahasa Indonesia; layar FATAL dengan tombol "Coba lagi" dan "Buka folder log"
+- [x] **B1** Tailwind v4, token `tani-*` + status, Inter self-hosted
+- [ ] **B2** shadcn: `button`, `card` (sebagian)
+  - 📌 **Sebagian.** `button` & `card` via CLI. **CLI salah membaca alias → menginstal paket npm asing `cn`**; sudah dicopot & import diperbaiki. `dialog`, `input`, `label`, `sonner` menyusul di Sprint 2 (dibutuhkan login/form) — cek ulang import setiap `shadcn add`
+- [x] **B3** React Router + TanStack Query + Zustand; `lib/api-client.ts`
+  - 📌 Zustand terpasang, belum dipakai (keranjang kasir S5)
+- [x] **B4** Boot screen dari `window.pos.onLifecycle()` + layar FATAL ("Coba lagi", "Buka folder log")
 
 ## C. PostgreSQL portable & PgManager
 
-- [ ] **C1** Pilih major PostgreSQL (≥ 15; terbaru yang tersedia sebagai zip binaries Windows x64) → `resources/postgres/VERSION` + SHA-256 di `scripts/postgres.sha256`
-- [ ] **C2** `scripts/fetch-postgres.mjs`: unduh zip, verifikasi checksum, ekstrak ke `resources/postgres/` hanya `bin`, `lib`, `share` (buang pgAdmin, doc, include, symbols, StackBuilder)
-- [ ] **C3** `src/main/paths.ts`: binDir (dev vs packaged), dataDir `%APPDATA%/pos-desktop`, pgdata/logs/backups; fallback `C:\ProgramData\pos-desktop` bila path non-ASCII (PRD §3.1)
-- [ ] **C4** `src/main/secrets.ts`: generate & simpan password `postgres` + `pos_app` terenkripsi `safeStorage`
-- [ ] **C5** `PgManager.initCluster()` — PRD §3.3 lengkap: initdb (`--pwfile`, scram, UTF8, locale), `mandiri_tani.conf`, `pg_hba.conf` loopback saja, buat role `pos_app` + DB `mandiri_tani`; gagal → pindahkan ke `pgdata.failed-<ts>`
-- [ ] **C6** `PgManager.start()` — PRD §3.4: probe port 5433→5440, `pg_ctl status` (pakai cluster yatim), tangani PID basi, `pg_ctl start -w -t 60`, readiness `pg_isready` + `SELECT 1`
-- [ ] **C7** `PgManager.stop()` — `-m fast -w -t 30`, fallback `-m immediate`; idempoten
-- [ ] **C8** Verifikasi manual & catat di 📌: (a) postgres tetap hidup setelah `pg_ctl` keluar dan tidak terbunuh bersama terminal dev, (b) kill paksa proses Electron → boot berikutnya memakai cluster yatim, (c) matikan paksa `postgres.exe` → boot berikutnya pulih (PID basi + WAL recovery)
+- [x] **C1** PostgreSQL **18.4-1** → `resources/postgres/VERSION`; SHA-256 tercatat di `scripts/postgres.sha256`
+- [x] **C2** `scripts/fetch-postgres.mjs` (hanya `bin/lib/share`, ±146 MB)
+  - 📌 CDN EDB ±30 KB/s per koneksi → `scripts/lib/parallel-download.mjs` (16 koneksi, retry per potongan, bisa dilanjutkan; ±300 KB/s). Ekstrak memakai `tar.exe` bawaan Windows (GNU tar dari Git Bash salah membaca `C:`). Ditambah `npm run fetch:electron` karena unduhan binary Electron oleh npm terputus
+- [x] **C3** `src/main/paths.ts` (dev vs packaged, `%APPDATA%/pos-desktop`, fallback ProgramData untuk path non-ASCII)
+- [x] **C4** `src/main/secrets.ts` — password `postgres` & `pos_app` terenkripsi `safeStorage` (DPAPI)
+- [x] **C5** `PgManager.initCluster()` — initdb scram/UTF8/`builtin C.UTF-8`, `mandiri_tani.conf`, `pg_hba` loopback, role + DB, gagal → `pgdata.failed-<ts>`
+  - 📌 Ditambah penanda `mandiri_tani.initialized` + `discardIncompleteCluster()`: first run yang terputus setelah initdb (terjadi nyata saat dev pertama) otomatis diulang dari awal
+- [x] **C6** `PgManager.start()` — port 5433→5440, adopsi cluster yatim, PID basi, `pg_ctl start -w`, `pg_isready`
+  - 📌 **Bug kritis ditemukan & diperbaiki:** `pg_ctl start` lewat `execFile` tak pernah selesai di Windows karena postmaster mewarisi pipe stdout/stderr → aplikasi tersangkut di "Menyalakan database". Sekarang output ke file + tunggu event `exit`. Tes start/stop turun dari 60 dtk (timeout) ke < 2 dtk
+- [x] **C7** `PgManager.stop()` — fast, fallback immediate, idempoten
+- [ ] **C8** Verifikasi manual crash (sebagian)
+  - 📌 **Sebagian.** Otomatis (tes): adopsi cluster yang masih hidup dari sesi sebelumnya ✓, PID basi ✓, port terpakai ✓, postgres tetap hidup setelah `pg_ctl` keluar ✓. Belum: kill paksa Electron dari Task Manager & cabut listrik/VM → catat hasil
 
 ## D. Database & migrasi
 
-- [ ] **D1** `src/server/db/pool.ts` (konfigurasi NFR-DB-01, parser NUMERIC tetap string, `date` tetap string) + `tx.ts` (`withTransaction` dengan retry 40001/40P01, `withClient`)
-- [ ] **D2** Migration runner (`migrate.ts`): `schema_migrations` (nama, checksum, applied_at), advisory lock, satu file satu transaksi, checksum berubah → error
-- [ ] **D3** `db/migrations/0001_system.sql` dari `mandiri_tani_schema.sql` bagian 0–1: extension `pg_trgm`, fungsi `set_updated_at`/`forbid_mutation`, tabel `settings`, `users`, `devices`, `device_pairing_codes`, `sessions`, `authorization_grants`, `audit_logs`, `doc_sequences`, `sync_ops` + trigger. 📌 Jalankan seluruh `mandiri_tani_schema.sql` sekali ke DB kosong untuk memvalidasi sintaks — perbaiki file skema bila ada error
-- [ ] **D4** Seed perangkat hub `K01` (kind HUB) saat first run
-- [ ] **D5** Helper test `test/pg.ts`: cluster sementara (port 5439) dari binaries yang sama, migrasi, teardown — dipakai test integrasi
+- [x] **D1** `pool.ts` (NUMERIC/INT8 string, DATE string, statement_timeout 15 dtk) + `tx.ts` (`withTransaction` retry 40001/40P01 ×3, `withClient`)
+- [x] **D2** Migration runner — advisory lock, checksum (CRLF dinormalkan), satu file satu transaksi, migrasi rusak di-rollback penuh
+- [x] **D3** `0001_system.sql` (11 tabel sistem + `ensure_updated_at_triggers()` + audit append-only)
+  - 📌 **Seluruh `mandiri_tani_schema.sql` kini dieksekusi di tes** (`test/schema.test.ts`: ≥ 50 tabel, trigger `updated_at` lengkap, **semua FK ber-index**, ledger append-only). Tes ini menemukan FK tanpa index `device_pairing_codes.used_by_device_id` → diperbaiki di skema & 0001
+- [x] **D4** Seed perangkat hub `K01` (idempoten)
+- [x] **D5** Helper tes `test/global-setup.ts` + `test/pg.ts`
 
 ## E. Embedded server
 
-- [ ] **E1** `src/server/app.ts` + `server.ts` (`createServer(config) → {start, stop}`), tanpa import electron; middleware requestId, pino logger, `express.json`, `helmet`, `errorHandler` (AppError/Zod/PG → kontrak error backend-standards §3)
-- [ ] **E2** `GET /api/v1/health` → versi app, status DB, statistik pool, waktu server; test integrasi
-- [ ] **E3** Listen `0.0.0.0:3000`; port terpakai → FATAL dengan pesan jelas (FR-SRV-01)
-- [ ] **E4** Produksi: Express melayani build renderer statis di `/`; `BrowserWindow.loadURL('http://127.0.0.1:3000/')`. Dev: Vite proxy `/api` → 3000
+- [x] **E1** `createApp` + `createServer` tanpa electron (dijaga ESLint), request id, pino, helmet CSP, kontrak error
+- [x] **E2** `GET /api/v1/health` (versi, DB, pool, waktu) + tes
+- [x] **E3** Listen `0.0.0.0:3000`; port terpakai → `PORT_IN_USE` berbahasa Indonesia (tes)
+- [ ] **E4** Produksi: Express melayani renderer; window pindah ke `http://127.0.0.1:3000/` setelah READY (sebagian)
+  - 📌 **Sebagian.** Kode & `npm run build` jalan; jalur produksi baru terbukti setelah installer (G2)
 
 ## F. Lifecycle Electron
 
-- [ ] **F1** `src/main/index.ts`: `requestSingleInstanceLock` (instance kedua memfokuskan window pertama), `app.setName('pos-desktop')` / userData, urutan boot PRD §3.2 lewat `lifecycle.ts`
-- [ ] **F2** Shutdown PRD §3.6: `before-quit` → `server.stop()` → `pool.end()` → `PgManager.stop()` → `app.exit(0)`; `session-end` jalur cepat; `powerMonitor.resume` health check
-- [ ] **F3** Preload `contextBridge` → `window.pos.onLifecycle`, `window.pos.appInfo`; tipe di `src/shared/bridge.ts`; BrowserWindow dengan opsi keamanan (security-standards §5)
+- [x] **F1** Single-instance lock, `userData` = `%APPDATA%/pos-desktop`, urutan boot PRD §3.2
+- [ ] **F2** Shutdown: `before-quit` → server → pool → `pg_ctl stop`; `session-end`; `powerMonitor.resume` (sebagian)
+  - 📌 **Sebagian.** Kode lengkap; tutup jendela normal di dev ✓. Belum diuji: logoff/shutdown Windows saat aplikasi terbuka, sleep → resume
+- [x] **F3** Preload `window.pos` (lifecycle, info, log, printer), IPC memvalidasi pengirim + Zod, BrowserWindow sandbox
 
 ## G. Packaging
 
-- [ ] **G1** `electron-builder.yml`: NSIS x64, `perMachine: true`, `oneClick: false`, `extraResources` postgres; `build/installer.nsh` menambah/menghapus rule firewall TCP 3000 profil Private
-- [ ] **G2** `npm run dist` → install di Windows bersih (VM / akun user lain, idealnya dengan nama user berspasi) → app menyala, `http://<ip-lan>:3000/api/v1/health` terjangkau dari HP di Wi-Fi yang sama, uninstall tidak menghapus `%APPDATA%/pos-desktop`
+- [ ] **G1** `electron-builder.yml` + `build/installer.nsh` (sebagian)
+  - 📌 **Sebagian.** Ditulis: NSIS x64 perMachine, `extraResources` postgres + migrations, `electronDist` lokal, rule firewall TCP 3000 Private. Belum di-build
+- [ ] **G2** `npm run dist` → install di Windows bersih → app menyala, health terjangkau dari HP di Wi-Fi, uninstall menyisakan data
 
 ## Definition of Done Sprint 1
 
-- [ ] `npm run typecheck && npm run lint && npm test` hijau
-- [ ] Boot normal ≤ 8 dtk (HDD) / ≤ 4 dtk (SSD) — catat angka nyata di 📌
-- [ ] Skenario C8 (a–c) dan G2 terverifikasi dan dicatat
-- [ ] `mandiri_tani_schema.sql` tervalidasi terhadap PostgreSQL asli (D3)
-- [ ] `plan/README.md` diperbarui: status S1, versi terpasang, penyimpangan bila ada
+- [x] `npm run typecheck && npm run lint && npm test` hijau — 8 file, **42 tes**, ±30 dtk
+- [ ] Boot normal ≤ 8 dtk (HDD) / ≤ 4 dtk (SSD) — ukur di boot kedua (pertama = initdb ±1 menit)
+- [ ] Skenario C8 dan G2 terverifikasi dan dicatat
+- [x] `mandiri_tani_schema.sql` tervalidasi terhadap PostgreSQL asli (D3)
+- [x] `plan/README.md` diperbarui

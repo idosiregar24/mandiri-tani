@@ -93,12 +93,13 @@ pelanggan sengaja tidak disalin ke dokumen proyek.
 | `tbl_item.hargajual1` + `tbl_itemhj` (tipe S) | `product_prices` (grup NULL, min_qty 1) | Harga 0 tidak diimpor |
 | `tbl_supelgrup` | `customer_groups` (+ `discount_percent`) | General → UMUM |
 | `tbl_supel` PL / SU | `customers` / `suppliers` | `limitjmlhupi = 0` → `credit_limit NULL` (tanpa batas); termin 0 → 10 hari |
-| `tbl_itemstok` + lapisan `tbl_item_im` | `stock_movements` **OPENING** per produk | qty = stok; HPP = Σ(sisa × hargadasar) / Σ sisa |
+| `tbl_itemstok` + lapisan `tbl_item_im` | `stock_movements` **OPENING** + `stock_cost_layers` | Satu lapisan baru per baris `tbl_item_im` dengan `sisa > 0` (qty = sisa, harga = `hargadasar`, tanggal = `tanggal` asli) → FIFO berlanjut persis seperti di iPOS |
 | `tbl_ikhd` + `tbl_ikdt` sisa kredit | `receivables` **OPENING** | Per nota: `jmlkredit − krd_jml_byr − krd_jml_pot` > 0 → 308 baris, nomor/tanggal/jatuh tempo asli |
-| `tbl_ikhd`/`tbl_ikdt` (histori) | `sales`/`sale_items` `source = 'IPOS_IMPORT'` | **Opsional** (Q-14). Tanpa mutasi stok; HPP baris dari `tbl_item_ik.hargadasar` |
-| `tbl_imhd`/`tbl_imdt` (histori) | `purchase_invoices` `is_direct` | Opsional, histori harga beli per supplier |
-| `tbl_byrpiutanghd/dt` | `receivable_payments` + alokasi | Opsional (histori) |
-| `tbl_acckashd` KASO | `cash_transactions` | Opsional; kategori dari kata kunci keterangan |
+| `tbl_ikhd`/`tbl_ikdt` (histori) | `sales`/`sale_items` `source = 'IPOS_IMPORT'` | **Diimpor** (D-14). Tanpa mutasi stok; HPP baris = Σ(`tbl_item_ik.jumlahdasar × hargadasar`) per baris |
+| `tbl_imhd`/`tbl_imdt` (histori) | `purchase_invoices` `is_direct` | Diimpor; histori harga beli per supplier. Kredit → hanya yang dicentang Owner jadi `payables` (D-13) |
+| `tbl_byrpiutanghd/dt` | `receivable_payments` + alokasi | Diimpor (histori) |
+| `tbl_acckashd` KASO | `cash_transactions` | Diimpor; kategori dari kata kunci keterangan (EKSPEDISI, BONGKAR, MINYAK/MOBIL, UPAH, lain-lain) |
+| `tbl_formatnotr` (kantor UTM) | `doc_sequences` | `last_no` per tipe untuk tahun berjalan = `nomor` iPOS (mis. JL 1788, KSR 2060 per 2026-10-24) → nota pertama sistem baru melanjutkan nomor iPOS (Q-16) |
 | `tbl_conf` | `settings` | `DEF_JATUH_TEMPO` → `ar.default_term_days = 10`; `JUAL_STOK_HABIS` → `stock.allow_negative` |
 | `tbl_user`, jurnal, log aktivitas, opname lama | — | **Tidak dimigrasi** |
 
@@ -138,4 +139,7 @@ dan setiap proses impor di `import_batches` (nama file, SHA-256, ringkasan, pela
 | D-8 | Penomoran memakai kode tipe yang sudah dikenal toko: **KSR, JL, BL, BP**, … | Laporan iPOS |
 | D-9 | Fitur yang tidak pernah dipakai turun prioritas: split bill, bundling, rakitan, PO, PPN, mutasi gudang, level harga | §2 |
 | D-10 | ~~Modul RAM sawit~~ — **dibatalkan**: file tonase di luar konteks; "RAM 1/RAM 2" diimpor sebagai grup pelanggan biasa | Keputusan owner 2026-10-24 |
-| D-11 | HPP: tetap **rata-rata bergerak** kecuali owner meminta FIFO (Q-10). Saldo awal dari nilai FIFO iPOS | iPOS memakai FIFO |
+| D-11 | HPP **FIFO seperti iPOS** (keputusan owner); saldo awal = salinan lapisan FIFO iPOS (`tbl_item_im` sisa > 0) sehingga nilai persediaan sama persis (Rp 1,79 M) | iPOS `METHOD_HPP = FIFO` |
+| D-12 | Dua role v1: **KASIR** & **OWNER**; aksi sensitif kasir lewat PIN Owner | Keputusan owner; iPOS hanya 1 akun ADMIN |
+| D-13 | Hutang supplier: Owner **mencentang** dari 49 faktur kredit iPOS mana yang belum lunas (25 di antaranya dari Nov–Des 2025, kemungkinan besar sudah dibayar di luar iPOS) | DQ-11 |
+| D-14 | Histori 2 tahun **diimpor** | Keputusan owner |

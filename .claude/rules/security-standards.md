@@ -33,7 +33,8 @@ tailnet) bisa menjangkaunya**. Anggap jaringan tidak tepercaya.
    miliknya; void hanya untuk nota di shift yang masih OPEN; HPP/laba
    (`cost.read`) tidak dikirim ke role tanpa izin — **filter di query/
    serializer**, bukan disembunyikan di UI.
-3. **Otorisasi supervisor (FR-POS-20):** aksi yang butuh otorisasi
+3. **Otorisasi PIN Owner (FR-POS-20):** v1 hanya punya role `KASIR` dan
+   `OWNER`, jadi pemberi otorisasi selalu Owner. Aksi yang butuh otorisasi
    menghasilkan `423 AUTHORIZATION_REQUIRED` + `permission`. Klien
    memanggil `POST /auth/authorize` (username + PIN pemberi izin) →
    token `authorization_grants` sekali pakai, ≤ 2 menit, terikat ke
@@ -41,7 +42,7 @@ tailnet) bisa menjangkaunya**. Anggap jaringan tidak tepercaya.
    `X-Authorization-Grant`. Grant tidak pernah menaikkan hak sesi.
 
 Data sensitif per role:
-- `products.avg_cost`, `cost_per_base`, laporan laba → hanya `cost.read` (Owner).
+- Lapisan HPP FIFO (`stock_cost_layers`), `cost_per_base`, `unit_cost`, nilai persediaan, laporan laba → hanya `cost.read` (Owner).
 - Laporan arus kas & laba → hanya Owner.
 - Kasir: harga & stok boleh, HPP tidak.
 
@@ -91,7 +92,7 @@ izin (403), grant kedaluwarsa/terpakai (401). Respons ke role tanpa
 ## 7. Audit trail — append-only
 
 Wajib dicatat via `auditService.record(tx, …)` **di dalam transaksi aksi
-itu sendiri**: login/gagal login/lockout, otorisasi supervisor (pemberi &
+itu sendiri**: login/gagal login/lockout, otorisasi PIN Owner (pemberi &
 peminta), void nota, retur, ubah harga, harga manual, jual di bawah HPP,
 lewat limit kredit, penyesuaian & posting opname, tutup shift dengan
 selisih, ubah user/role/PIN, pairing/cabut perangkat, ubah setting,

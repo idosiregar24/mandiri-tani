@@ -65,10 +65,12 @@ is orientation, not a replacement for it.
    receivable + cash rows commit together via `withTransaction()`. Printing,
    drawer kick and anything outside the DB happen **after** commit; a print
    failure never rolls back or voids a sale.
-2. **Stock has one door: `stockService.apply(tx, movements)`.** Never
-   `UPDATE stock_balances` or `products.avg_cost` elsewhere; collect all
-   movements of a document and call it once (sorted lock order → no
-   deadlocks). HPP = moving average (PRD §6.6).
+2. **Stock has one door: `stockService`** (`apply` / `reserve` / `release`).
+   Never touch `stock_balances` or the FIFO tables (`stock_cost_layers`,
+   `stock_layer_consumptions`) elsewhere; collect all movements of a
+   document and call `apply` once (sorted lock order → no deadlocks).
+   **HPP = FIFO, same as iPOS** (ADR-04, PRD §6.6) — inventory value is
+   Σ layer `qty_remaining × unit_cost`.
 3. **No floats for money or quantity.** DB `NUMERIC`; `pg` returns strings;
    compute with `@shared/money` / `@shared/qty` (decimal.js); API sends
    decimal strings. Stock is stored in the product's **base unit**.
@@ -82,8 +84,12 @@ is orientation, not a replacement for it.
    anyone, including OWNER. Users are deactivated, never deleted.
 6. **Permissions come from `src/shared/permissions.ts` only** (PRD §4.2).
    Every route has `requirePermission`; cost/profit fields are stripped
-   server-side for roles without `cost.read`; supervisor overrides use
-   one-shot `authorization_grants` (HTTP 423 → PIN dialog → retry).
+   server-side for roles without `cost.read`. **v1 has two roles only:
+   `KASIR` and `OWNER`**; a cashier's sensitive action (void, return,
+   discount over limit, below-cost, over credit limit, pickup cancel) needs
+   the Owner's PIN via one-shot `authorization_grants` (HTTP 423 → PIN
+   dialog → retry). Adding a role later = migration on the CHECK +
+   `permissions.ts`, no feature code changes.
 7. **No auth bypass for localhost/LAN IPs.** The server is reachable from
    the whole store network (and later the tailnet via a local proxy).
 8. **The main process owns PostgreSQL.** Only `PgManager` calls
@@ -103,8 +109,14 @@ is orientation, not a replacement for it.
 12. **Design for how the store really sells** (Analisis D-1…D-11): two sale
     channels (KASIR = KSR quick sale, FAKTUR = JL invoice with credit,
     shipping fee); editing a line price is the normal flow, not an
-    exception; units are iPOS codes (ZAK = 50 KG); document type codes
-    KSR/JL/BL/BP/AB. Features the store never used in iPOS (split bill,
+    exception; units are iPOS codes (ZAK = 50 KG); document numbers are
+    **identical to iPOS** (`0001789/JL/UTM/1026`, yearly reset, continuing
+    iPOS's last number) and built only in `numbering.ts`. The store has **two
+    printers**, chosen per document role: `faktur` = **Epson LX-310 dot
+    matrix (ESC/P)** for JL faktur / AB pickup notes, `struk` = **thermal
+    receipt printer (ESC/POS)** for KSR receipts; no cash drawer. Never send
+    one language to the other role's printer. UI must stay **simple and easy to read**
+    (design-standards §0). Features the store never used in iPOS (split bill,
     bundles, assembly, PPN, warehouse transfer) stay low priority.
 14. **Sold-but-not-picked-up** (`plan/sprint-7-pengambilan-barang.md`):
     `stock_balances.qty` is **physical** stock and only drops when goods

@@ -66,7 +66,7 @@ Nama modul mengikuti PRD: `auth`, `devices`, `products`, `stock`, `sales`,
   Bahasa Indonesia untuk ditampilkan langsung.
 - Status: 400 validasi (Zod), 401 tanpa/token salah, 403 permission, 404,
   409 konflik bisnis (stok, status dokumen, duplikat nomor), 422 aturan bisnis
-  lain, 423 butuh otorisasi supervisor (`AUTHORIZATION_REQUIRED`), 503 DB
+  lain, 423 butuh otorisasi PIN Owner (`AUTHORIZATION_REQUIRED`), 503 DB
   tidak tersedia / maintenance.
 - Lempar `AppError(code, message, status, details)` dari service; satu
   `errorHandler` memetakan `ZodError`, `AppError`, dan error PG (`23505` →
@@ -93,7 +93,7 @@ Nama modul mengikuti PRD: `auth`, `devices`, `products`, `stock`, `sales`,
 ## 5. Waktu & angka
 
 - Waktu server dari `clock.now()` (dapat di-mock di test), zona
-  `Asia/Jakarta` untuk tanggal bisnis (nomor dokumen `YYMMDD`, laporan harian).
+  `Asia/Jakarta` untuk tanggal bisnis (bagian `BLNTHN` & tahun reset nomor dokumen, laporan harian).
 - Semua aritmetika uang/qty lewat `src/shared/money.ts` / `qty.ts`
   (decimal.js). **Dilarang** `Number(price) * qty` atau `parseFloat` untuk
   uang/qty.

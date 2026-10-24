@@ -5,6 +5,39 @@ lewat `@theme`, **tanpa** `tailwind.config.js`) + shadcn/ui (Radix) +
 lucide-react. Token warna final boleh disesuaikan setelah logo toko ada;
 **nama token** di bawah adalah kontraknya.
 
+## 0. Prinsip utama: sederhana, mudah dipakai, mudah dibaca
+
+Permintaan owner (2026-10-24). Pengguna adalah kasir & owner toko tani —
+bukan orang IT. Setiap layar diuji dengan pertanyaan: *"Bisakah kasir baru
+memakainya tanpa diajari lebih dari 5 menit?"*
+
+1. **Satu layar, satu tugas.** Layar kasir hanya untuk menjual; pengambilan
+   barang di layarnya sendiri. Jangan menumpuk banyak fungsi di satu halaman.
+2. **Satu tombol utama per layar**, besar dan berwarna primer (mis. "Bayar",
+   "Simpan Pengambilan"). Aksi lain tombol biasa/outline; aksi berbahaya
+   (void, hapus) disembunyikan di menu "Lainnya" + `ConfirmDialog`.
+3. **Teks besar & kontras tinggi.** Teks isi minimal 16 px, angka uang
+   penting (total, kembalian) ≥ 32 px; teks hitam/abu gelap di latar
+   putih/krem. Tidak ada teks abu muda untuk informasi penting.
+4. **Bahasa sehari-hari, bukan istilah teknis.** "Simpan", "Batal", "Barang
+   belum diambil", "Stok tersedia" — bukan "Submit", "Commit", "Reserved qty".
+   Pesan error menjelaskan **apa yang harus dilakukan** ("Stok Urea tinggal 3
+   zak. Kurangi jumlah atau minta PIN Owner.").
+5. **Sedikit warna, bermakna.** Hijau = aksi utama/berhasil, merah =
+   bahaya/kurang, kuning = perlu perhatian. Selebihnya netral. Tidak ada
+   gradien, bayangan tebal, atau animasi dekoratif.
+6. **Menu pendek.** Sidebar maksimal ±7 grup; menu yang tidak boleh diakses
+   peran itu **disembunyikan** (kasir melihat menu jauh lebih sedikit dari
+   owner).
+7. **Formulir pendek.** Hanya kolom yang wajib di depan; kolom jarang dipakai
+   di bagian "Detail lain" yang terlipat. Isi default otomatis bila bisa
+   ditebak (tanggal hari ini, gudang UTM, termin 10 hari).
+8. **Keyboard dan mouse sama-sama mudah.** Shortcut ditampilkan di tombolnya
+   (`Bayar F9`), tapi semua bisa juga diklik dengan target ≥ 44 px.
+9. **Pakai komponen shadcn/ui apa adanya** (Button, Input, Dialog, Table,
+   Select, Card) dengan token di bawah — jangan membuat komponen "kreatif"
+   sendiri bila shadcn sudah punya.
+
 ## 1. Token — jangan tulis hex literal
 
 ```css
@@ -51,7 +84,7 @@ sehingga `<Button>` default, focus ring, dsb. otomatis sesuai brand.
 | Pilih produk / pelanggan / supplier | `ProductPicker`, `CustomerPicker`, `SupplierPicker` (cari + keyboard) — jangan `<Select>` berisi ribuan opsi |
 | Status dokumen | `StatusChip domain="sale"\|"purchase-order"\|…` — label & warna dari satu peta `lib/status.ts` |
 | Konfirmasi | `ConfirmDialog` (`tone="danger"` untuk void/hapus) — jangan `window.confirm` (memblok scanner & IPC) |
-| Otorisasi supervisor | `AuthorizeDialog` (username + PIN → token sekali pakai) |
+| Otorisasi PIN Owner | `AuthorizeDialog` (username + PIN Owner → token sekali pakai) |
 | Kosong / peringatan | `EmptyState`, `Notice tone="info|success|warning|error"` |
 | Angka KPI | `StatCard` |
 

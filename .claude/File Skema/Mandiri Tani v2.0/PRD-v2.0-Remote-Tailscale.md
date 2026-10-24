@@ -65,5 +65,5 @@ Bila nanti dibutuhkan, itu PRD tersendiri (v3).
 
 - Akun Tailscale milik siapa (owner pribadi / akun toko)? Paket gratis
   cukup (≤ 3 user, 100 perangkat) atau perlu berbayar?
-- Siapa saja yang boleh remote: owner saja, atau juga supervisor?
+- Siapa saja yang boleh remote: owner saja, atau juga kasir (mis. cek stok dari rumah)? (v1 hanya punya role Kasir & Owner.)
 - Perlu notifikasi push ke HP owner (mis. stok menipis, selisih shift)?

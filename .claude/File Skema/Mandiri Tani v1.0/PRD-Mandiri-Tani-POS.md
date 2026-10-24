@@ -50,7 +50,7 @@ port 3000 dan **menyinkronkan data** dengan protokol offline-first
 | Petani sering bayar setelah panen ("yarnen") | Piutang per pelanggan dengan limit kredit, jatuh tempo, pelunasan bertahap, aging |
 | Internet di desa tidak stabil | Seluruh sistem lokal; sinkron antar-perangkat lewat LAN, tidak lewat internet |
 | Listrik sering padam / laptop mati mendadak | PostgreSQL ACID + WAL: transaksi yang sudah commit tidak hilang; boot berikutnya pulih otomatis |
-| Stok selisih dan tidak tahu laba sebenarnya | Kartu stok otomatis, stok opname, HPP rata-rata bergerak, laporan laba kotor per barang/faktur/periode |
+| Stok selisih dan tidak tahu laba sebenarnya | Kartu stok otomatis, stok opname, HPP FIFO (seperti iPOS), laporan laba kotor per barang/faktur/periode |
 
 ### 1.3 Visi
 
@@ -63,7 +63,7 @@ port 3000 dan **menyinkronkan data** dengan protokol offline-first
 | ID | Sasaran | Ukuran |
 |---|---|---|
 | G-1 | Berjualan tanpa internet | 100% fitur v1 berfungsi dengan kabel jaringan dicabut |
-| G-2 | Kasir cepat | Scan → baris masuk keranjang ≤ 150 ms (p95); bayar → struk tercetak ≤ 2 dtk |
+| G-2 | Kasir cepat | Scan/cari → baris masuk keranjang ≤ 150 ms (p95); bayar → printer **mulai** mencetak ≤ 2 dtk (LX-310 menyelesaikan ½ halaman ±3–6 dtk) |
 | G-3 | Tanpa kehilangan data | 0 transaksi committed hilang pada uji cabut-listrik 50× (NFR-REL-01) |
 | G-4 | Stok akurat | Saldo kartu stok = `stock_balances` untuk 100% produk (cek otomatis harian) |
 | G-5 | Bisa disinkronkan | Perangkat LAN yang offline 1 hari dapat push ≥ 500 operasi tanpa duplikat |
@@ -103,7 +103,7 @@ Asumsi bertanda ✔ sudah dikonfirmasi oleh data iPOS (Analisis §2).
 - A-2: 1 PC/laptop kasir utama (hub) + 0–3 HP staf + 1 HP owner. Saat ini ✔ 1 PC, 1 user `ADMIN`.
 - A-3 ✔: Toko non-PKP secara default (PPN hanya di 8 dari 9.705 nota).
 - A-4 ✔: Tidak ada qty desimal; pupuk ecer dijual per **KG bulat** (satuan dasar KG, ZAK = 50 KG). `allow_decimal_qty` tetap tersedia.
-- A-5: Printer struk thermal ESC/POS 58 mm atau 80 mm (Q-4).
+- A-5 ✔: **Dua printer** (§8.1): (1) **Epson LX-310** (dot matrix, ESC/P, USB), continuous form **½ halaman 9,5"×5,5", 1 lembar** — Faktur Penjualan (JL), bukti pengambilan (AB), dokumen ½ halaman lain; (2) **printer struk thermal** (ESC/POS, kertas gulung ±48 huruf ≈ 80 mm, model menyusul) — struk kasir (KSR). Tanpa laci uang.
 - A-6 ✔: Barang tanpa barcode — pencarian nama/kode adalah jalur utama, scanner pelengkap.
 - A-7 ✔: Harga jual dinegosiasikan per transaksi; harga master hanya titik awal.
 
@@ -137,7 +137,7 @@ Rincian, masalah kualitas data (DQ-1…DQ-12), dan pemetaan tabel:
 │  │  Renderer (Chromium)          Main process (Node.js)                       │               │
 │  │  ┌──────────────────┐ IPC ┌────────────────────────────────────────────┐   │               │
 │  │  │ React + Vite UI  │◄───►│ AppLifecycle  · PgManager (pg_ctl)          │   │               │
-│  │  │ Kasir/Backoffice │     │ HardwareBridge (ESC/POS, laci, serial)      │   │               │
+│  │  │ Kasir/Backoffice │     │ HardwareBridge (ESC/P LX-310, ESC/POS)      │   │               │
 │  │  │                  │HTTP │ Embedded API: Express  0.0.0.0:3000          │   │               │
 │  │  │  fetch /api/v1 ──┼────►│   └─ pg Pool (max 10) ──────────┐           │   │               │
 │  │  └──────────────────┘     └─────────────────────────────────┼───────────┘   │               │
@@ -146,7 +146,7 @@ Rincian, masalah kualitas data (DQ-1…DQ-12), dan pemetaan tabel:
 │   ┌──────────────────────────────────────────────────────────────────────────┐                │
 │   │ PostgreSQL portable (resources/postgres/bin) · data: %APPDATA%/pos-desktop/pgdata │        │
 │   └──────────────────────────────────────────────────────────────────────────┘                │
-│        USB/Serial/LAN ─► Printer thermal ESC/POS ─RJ11─► Laci kasir                           │
+│        USB ─► Epson LX-310 dot matrix (ESC/P, continuous form)   · Laci kasir manual           │
 │        USB HID ────────► Barcode scanner (emulasi keyboard)                                   │
 └───────────────────────────────────────▲───────────────────────────────────────────────────────┘
                                         │ HTTP :3000 (Wi-Fi/LAN toko, private network)
@@ -171,7 +171,7 @@ Rincian, masalah kualitas data (DQ-1…DQ-12), dan pemetaan tabel:
 | DB driver | `pg` (node-postgres) `Pool` + helper `withTransaction()` | Koneksi terkelola, transaksi eksplisit, raw SQL berparameter (tanpa ORM — ADR-06) |
 | Database | **PostgreSQL portable** (zip binaries Windows, major dipin — `resources/postgres/VERSION`), port **5433**, `listen_addresses=127.0.0.1` | ACID, MVCC, JSONB, data di `%APPDATA%/pos-desktop/pgdata` |
 | Mobile client | React + **Capacitor** (Android), komponen dibagi dengan renderer | Stok opname, cek harga, dashboard owner; outbox offline (§5.7) |
-| Printer | Encoder ESC/POS + transport Network (TCP 9100) / Serial (`serialport`) / Windows RAW spooler | Cetak langsung tanpa dialog Windows, buka laci |
+| Printer | Encoder **ESC/P** (Epson LX-310 dot matrix, v1) / ESC/POS (thermal, cadangan) + transport Windows RAW spooler (USB) / Network / Serial | Cetak nota & faktur langsung tanpa dialog Windows |
 | Test | Vitest (unit + integrasi dengan PostgreSQL asli), Playwright-Electron (E2E alur kasir, *Should*) | |
 
 ### 2.3 Alur komunikasi
@@ -236,7 +236,7 @@ mandiri-tani-pos/
 | ADR-01 | Renderer memakai REST API, bukan IPC, untuk data | Satu jalur kode untuk desktop & mobile; API teruji oleh UI sendiri |
 | ADR-02 | Primary key **UUIDv7** dibuat aplikasi (`uuid` npm) | Klien offline bisa membuat ID tanpa server; urut waktu → index B-tree tetap rapat |
 | ADR-03 | Uang `NUMERIC(18,2)`, HPP `NUMERIC(18,4)`, qty `NUMERIC(18,4)`; JS memakai `decimal.js` | Tidak ada float untuk uang/qty; `pg` mengembalikan NUMERIC sebagai string |
-| ADR-04 | HPP metode **rata-rata bergerak (moving average)** global per produk | Paling umum di iPOS & mudah dipahami pemilik; FIFO = Won't-v1 |
+| ADR-04 | HPP metode **FIFO** per produk × gudang, dengan tabel lapisan (`stock_cost_layers`) | Keputusan owner 2026-10-24: sama seperti iPOS, sehingga laba & nilai persediaan bisa dibandingkan langsung; saldo awal menyalin lapisan FIFO iPOS |
 | ADR-05 | Akses remote memakai **Tailscale** (v2.0), bukan Cloudflare Tunnel | API POS tidak pernah terbuka ke internet publik; tailnet privat + ACL; HTTPS via `tailscale serve` |
 | ADR-06 | Raw SQL berparameter dengan `pg`, tanpa ORM | Kontrol penuh atas lock & transaksi stok; skema SQL eksplisit |
 | ADR-07 | Express di main process, dirancang bisa pindah ke `utilityProcess` | Sesuai spesifikasi, dengan jalan keluar bila ada masalah performa |
@@ -420,7 +420,7 @@ instalasi **SEBAIKNYA** menyarankan pengecualian folder
   boot pertama hari itu atau 30 menit setelah READY), ke
   `backups/daily/mandiri_tani-YYYYMMDD-HHmm.dump`, retensi 14 harian + 8
   mingguan. Juga ke folder tambahan bila diset owner.
-- **FR-SYS-11 (M):** backup manual dari menu Pengaturan (Owner/Supervisor).
+- **FR-SYS-11 (M):** backup manual dari menu Pengaturan (Owner).
 - **FR-SYS-12 (M):** restore (Owner saja): server masuk *maintenance mode*
   (tolak semua request kecuali status), `pg_restore` ke database baru
   `mandiri_tani_restore`, verifikasi, lalu rename atomik; database lama
@@ -443,48 +443,52 @@ instalasi **SEBAIKNYA** menyarankan pengecualian folder
 
 | Persona | Role | Konteks | Kebutuhan utama |
 |---|---|---|---|
-| **Sari — Kasir** | `KASIR` | Berdiri di meja kasir, antrean petani saat pagi; tidak paham komputer mendalam | Scan cepat, ganti satuan cepat, struk keluar, tidak takut salah |
-| **Pak Budi — Supervisor Gudang** | `SUPERVISOR` | Terima barang dari distributor, cek stok, opname bulanan; sering pakai HP di gudang | PO & penerimaan, stok opname dari HP, otorisasi void/diskon kasir |
-| **Bu Ani — Owner** | `OWNER` | Kadang di toko, sering di luar; ingin tahu omzet & laba | Harga jual, laporan laba, piutang petani, kas; di v1 via PC toko / HP di Wi-Fi toko, di v2 dari mana saja (Tailscale) |
+**v1 memakai dua role saja: `KASIR` dan `OWNER`** (keputusan owner
+2026-10-24 — sekarang semua transaksi iPOS atas nama satu akun ADMIN).
+Role tambahan (mis. Supervisor Gudang) bisa ditambah kemudian lewat migrasi
+CHECK + peta permission, tanpa mengubah kode fitur.
+
+| Persona | Role | Konteks | Kebutuhan utama |
+|---|---|---|---|
+| **Sari — Kasir** | `KASIR` | Di meja kasir, antrean petani saat pagi; juga melayani pengambilan barang; tidak paham komputer mendalam | Cari/scan cepat, ganti satuan, ubah harga tawar, struk keluar, input pengambilan, terima cicilan piutang |
+| **Owner** | `OWNER` | Kadang di toko, sering di luar; memegang uang, harga, pembelian, dan stok | Harga jual, pembelian & hutang, opname, laporan laba, piutang petani, kas; memberi otorisasi PIN untuk aksi kasir yang sensitif; di v1 via PC toko / HP di Wi-Fi toko, di v2 dari mana saja (Tailscale) |
 
 ### 4.2 Matriks hak akses (kontrak — `rules/security-standards.md` §3)
 
 Permission berbentuk kunci `modul.aksi`, dipetakan ke role di kode
 (`src/shared/permissions.ts`). v1 memakai role tetap; per-user override =
-*Could*.
+*Could* (mis. bila kelak kasir diizinkan menginput barang datang).
 
-| Permission | KASIR | SUPERVISOR | OWNER |
-|---|:-:|:-:|:-:|
-| `sales.create`, `sales.hold`, `shift.open/close` | ✔ | ✔ | ✔ |
-| `sales.discount` (≤ batas diskon kasir, default 5%) | ✔ | ✔ | ✔ |
-| `sales.discount.unlimited` | ⛔ (butuh otorisasi) | ✔ | ✔ |
-| `sales.price_override` (ubah harga di baris, ≥ HPP — alur normal, D-2) | ✔ | ✔ | ✔ |
-| `sales.sell_below_cost` | ⛔ | ⛔ (otorisasi Owner) | ✔ |
-| `sales.void` (batalkan nota selesai) | ⛔ (otorisasi) | ✔ | ✔ |
-| `sales.return` | ⛔ (otorisasi) | ✔ | ✔ |
-| `sales.credit` (jual piutang) | ✔ bila dalam limit | ✔ | ✔ |
-| `sales.credit.over_limit` | ⛔ | ⛔ | ✔ |
-| `cash.in/out` (kas masuk/keluar laci) | ✔ | ✔ | ✔ |
-| `sales.pending_pickup` (jual "diambil nanti"), `pickups.create`, `pickups.read` | ✔ | ✔ | ✔ |
-| `pickups.cancel` (batalkan pengambilan) | ⛔ (otorisasi) | ✔ | ✔ |
-| `imports.ipos`, `system.reset_preparation`, `system.go_live` | ⛔ | ⛔ | ✔ |
-| `products.read`, `stock.read` | ✔ (tanpa HPP) | ✔ | ✔ |
-| `products.write` (data barang, satuan, barcode — tanpa harga) | ⛔ | ✔ | ✔ |
-| `prices.write` | ⛔ | ⛔ | ✔ |
-| `cost.read` (lihat HPP/laba) | ⛔ | ⛔ | ✔ |
-| `purchases.*`, `stock.opname`, `stock.adjust`, `stock.transfer` | ⛔ | ✔ | ✔ |
-| `ar.payment` (terima pelunasan piutang) | ✔ | ✔ | ✔ |
-| `ap.payment` (bayar hutang supplier) | ⛔ | ✔ | ✔ |
-| `reports.sales` (penjualan per shift sendiri) | ✔ (shift sendiri) | ✔ | ✔ |
-| `reports.profit`, `reports.cashflow` | ⛔ | ⛔ | ✔ |
-| `users.manage`, `devices.manage`, `settings.write`, `backup.restore` | ⛔ | ⛔ | ✔ |
-| `backup.create` | ⛔ | ✔ | ✔ |
+| Permission | KASIR | OWNER |
+|---|:-:|:-:|
+| `sales.create`, `sales.hold`, `shift.open/close` | ✔ | ✔ |
+| `sales.discount` (≤ batas diskon kasir, default 5%) | ✔ | ✔ |
+| `sales.discount.unlimited` | ⛔ (otorisasi Owner) | ✔ |
+| `sales.price_override` (ubah harga di baris, ≥ HPP — alur normal, D-2) | ✔ | ✔ |
+| `sales.sell_below_cost` | ⛔ (otorisasi Owner) | ✔ |
+| `sales.void` (batalkan nota selesai) | ⛔ (otorisasi Owner) | ✔ |
+| `sales.return` | ⛔ (otorisasi Owner) | ✔ |
+| `sales.credit` (jual piutang) | ✔ bila dalam limit | ✔ |
+| `sales.credit.over_limit` | ⛔ (otorisasi Owner) | ✔ |
+| `cash.in/out` (kas masuk/keluar laci) | ✔ | ✔ |
+| `sales.pending_pickup` (jual "diambil nanti"), `pickups.create`, `pickups.read` | ✔ | ✔ |
+| `pickups.cancel` (batalkan pengambilan) | ⛔ (otorisasi Owner) | ✔ |
+| `ar.payment` (terima pelunasan piutang) | ✔ | ✔ |
+| `products.read`, `stock.read` | ✔ (tanpa HPP) | ✔ |
+| `customers.create` (tambah pelanggan cepat: nama + HP) | ✔ | ✔ |
+| `reports.sales` (penjualan per shift) | ✔ (shift sendiri) | ✔ |
+| `products.write`, `prices.write`, `customers.write`, `suppliers.write` | ⛔ | ✔ |
+| `cost.read` (lihat HPP/laba) | ⛔ | ✔ |
+| `purchases.*`, `ap.payment`, `stock.opname`, `stock.adjust`, `stock.transfer` | ⛔ | ✔ |
+| `reports.profit`, `reports.cashflow`, `reports.*` lainnya | ⛔ | ✔ |
+| `users.manage`, `devices.manage`, `settings.write`, `backup.create`, `backup.restore` | ⛔ | ✔ |
+| `imports.ipos`, `system.reset_preparation`, `system.go_live` | ⛔ | ✔ |
 
-**Otorisasi supervisor (FR-POS-20, M):** aksi bertanda "otorisasi" memunculkan
-dialog PIN; user lain dengan permission tersebut memasukkan username + PIN.
-Aksi tercatat di `audit_logs` dengan `actor_id` (kasir) **dan**
-`approved_by` (pemberi otorisasi). Otorisasi berlaku **satu aksi**, tidak
-menaikkan hak sesi.
+**Otorisasi Owner (FR-POS-20, M):** aksi bertanda "otorisasi" memunculkan
+dialog PIN; Owner memasukkan username + PIN di layar kasir. Aksi tercatat di
+`audit_logs` dengan `actor_id` (kasir) **dan** `approved_by` (Owner).
+Otorisasi berlaku **satu aksi**, tidak menaikkan hak sesi. Bila Owner tidak
+di toko, aksi tersebut ditunda (nota bisa ditahan dengan F6).
 
 ### 4.3 Alur kerja utama
 
@@ -492,29 +496,34 @@ menaikkan hak sesi.
 ```
 Login (username + PIN) → Buka Shift (input modal awal, hitung pecahan)
 → [loop] Scan/cari barang → (ubah qty/satuan) → F8 Pilih pelanggan (opsional)
-        → F9 Bayar (Cash/QRIS/Transfer/Piutang/kombinasi) → struk + laci terbuka
+        → F9 Bayar (Cash/QRIS/Transfer/Piutang/kombinasi) → nota tercetak di LX-310 → sobek
 → (sesekali) F6 Tahan nota / F7 Ambil nota tertahan · Kas keluar (beli es, bensin)
 → Tutup Shift (hitung uang laci per pecahan → selisih tercatat) → cetak rekap shift → Logout
 ```
 
-**Supervisor — penerimaan barang:**
+**Kasir — pelanggan datang mengambil barang:**
 ```
-Buat PO ke supplier → (barang datang) Penerimaan Barang dari PO (qty diterima, HPP)
-→ stok bertambah + HPP rata-rata diperbarui → Faktur Pembelian dari penerimaan
-→ hutang supplier tercatat (jatuh tempo) → Pembayaran hutang bertahap
-```
-
-**Supervisor — stok opname dari HP:**
-```
-Buat sesi opname (gudang, filter kategori) di desktop → HP staf menarik daftar barang (sync pull)
-→ staf scan & hitung (offline boleh) → push hasil hitung → supervisor review selisih
-→ Posting opname → mutasi penyesuaian otomatis di kartu stok
+F11 Pengambilan Barang → cari pelanggan / ketik no. nota → isi qty diambil → nama penerima
+→ simpan & cetak bukti AB (2 rangkap) → stok fisik berkurang
 ```
 
-**Owner:**
+**Owner — barang datang dari supplier:**
 ```
-Atur harga & level harga → pantau dashboard (omzet hari ini, laba kotor, stok menipis,
-piutang jatuh tempo) → laporan laba rugi kotor & arus kas per periode
+Faktur Pembelian langsung (BL): supplier, barang, qty, harga beli, tunai/kredit + jatuh tempo
+→ stok bertambah + lapisan HPP FIFO baru → hutang supplier tercatat bila kredit → pembayaran hutang bertahap
+(PO + penerimaan terpisah tersedia bila nanti dibutuhkan — FR-PUR-01, Should)
+```
+
+**Owner — stok opname:**
+```
+Buat sesi opname (gudang, filter kategori) → hitung di desktop atau HP (offline boleh)
+→ review selisih → Posting opname → mutasi penyesuaian otomatis di kartu stok
+```
+
+**Owner — kendali:**
+```
+Atur harga → pantau dashboard (omzet hari ini, laba kotor, stok menipis, piutang jatuh tempo,
+barang belum diambil) → laporan laba rugi kotor & arus kas per periode → otorisasi PIN bila diminta kasir
 ```
 
 ---
@@ -547,14 +556,14 @@ piutang jatuh tempo) → laporan laba rugi kotor & arus kas per periode
 | FR-INV-01 | Stok disimpan dalam **satuan dasar** per (produk, gudang) di `stock_balances`; setiap perubahan stok **WAJIB** menulis `stock_movements` (ledger append-only) dalam transaksi yang sama | M |
 | FR-INV-13 | **Tiga angka stok** di semua layar stok & pencarian kasir: **Fisik** (`qty`, barang di gudang), **Dipesan** (`reserved_qty`, terjual belum diambil), **Tersedia** (= fisik − dipesan). Penjualan divalidasi terhadap **Tersedia**; opname menghitung **Fisik** | M |
 | FR-INV-02 | **Kartu stok**: per produk & gudang & periode — saldo awal, masuk, keluar, saldo berjalan, sumber dokumen (klik → buka dokumen), tampil dalam satuan dasar atau satuan pilihan | M |
-| FR-INV-03 | **HPP rata-rata bergerak**: diperbarui pada setiap barang masuk berbiaya (penerimaan pembelian, retur jual, saldo awal, hasil rakitan). Rumus di §6.6 | M |
+| FR-INV-03 | **HPP FIFO** (sama seperti iPOS): setiap barang masuk berbiaya membuat lapisan harga; barang keluar memakai lapisan tertua lebih dulu. Aturan lengkap di §6.6. Layar stok menampilkan nilai persediaan & rincian lapisan (Owner) | M |
 | FR-INV-04 | **Saldo awal stok** (go-live): input qty + HPP per produk per gudang; satu kali per produk (dokumen `OPENING`) | M |
 | FR-INV-05 | **Stok opname**: sesi per gudang (opsional filter kategori/rak) → snapshot qty sistem saat posting → input qty fisik (desktop atau HP) → review selisih (qty & nilai) → posting = mutasi `OPNAME` otomatis. Penjualan selama sesi tetap boleh; qty sistem diambil saat posting, bukan saat sesi dibuat | M |
 | FR-INV-06 | **Penyesuaian stok** manual dengan alasan wajib (Rusak, Hilang, Kedaluwarsa, Sampel, Lainnya + catatan) | M |
 | FR-INV-07 | **Peringatan stok menipis**: daftar produk dengan stok ≤ minimum; badge di dashboard; saran qty order = maks − stok | M |
 | FR-INV-08 | **Perakitan**: hasil (produk `ASSEMBLY`) + qty → komponen keluar sesuai BOM (boleh disesuaikan per dokumen), hasil masuk dengan HPP = Σ biaya komponen + biaya tambahan | C |
 | FR-INV-09 | Mutasi antar gudang (keluar dari A, masuk ke B, satu dokumen, HPP tidak berubah) | C (satu gudang) |
-| FR-INV-10 | Kebijakan stok negatif: setting `stock.allow_negative` (default **tidak**). Di kasir desktop: stok tidak cukup → blok, kecuali otorisasi Supervisor. Dokumen hasil sinkron dari perangkat offline **selalu diterapkan** dan selisih masuk laporan "Stok Minus" | M |
+| FR-INV-10 | Kebijakan stok negatif: setting `stock.allow_negative` (default **tidak**). Di kasir desktop: stok tidak cukup → blok, kecuali otorisasi Owner. Dokumen hasil sinkron dari perangkat offline **selalu diterapkan** dan selisih masuk laporan "Stok Minus" | M |
 | FR-INV-11 | Batch & tanggal kedaluwarsa (pestisida/benih) | W-v1 (lihat §10) |
 | FR-INV-12 | Laporan nilai persediaan (qty × HPP) per gudang/kategori per tanggal | M |
 
@@ -580,22 +589,23 @@ scan/cari yang **selalu kembali fokus** setelah setiap aksi.
 | FR-POS-11 | **Jual piutang** (hanya mode Faktur): wajib pelanggan non-UMUM; boleh sebagian tunai + sebagian kredit dalam satu nota (485 nota di iPOS); cek limit kredit bila diisi (`NULL` = tanpa batas, D-7) — lewat limit butuh `sales.credit.over_limit`; jatuh tempo = tanggal + termin pelanggan (default **10 hari**, bisa diubah) | M |
 | FR-POS-12 | Pembulatan total (setting: tanpa / ke atas / terdekat, satuan Rp 100/500/1000), selisih disimpan di `rounding_amount` | S |
 | FR-POS-13 | PPN opsional (setting nonaktif default; bila aktif: harga termasuk PPN, `tax_amount` dihitung dan dicetak) | C |
-| FR-POS-14 | Selesai bayar: transaksi tersimpan **sebelum** cetak; struk dicetak otomatis (setting), laci terbuka bila ada pembayaran Cash. Gagal cetak **tidak** membatalkan transaksi → banner + tombol cetak ulang | M |
+| FR-POS-14 | Selesai bayar: transaksi tersimpan **sebelum** cetak; nota dicetak otomatis ke LX-310 (setting; jumlah rangkap/salinan bisa diatur), kertas maju ke perforasi. Laci sesuai `drawer.mode` (§8.2, default manual). Gagal cetak **tidak** membatalkan transaksi → banner + tombol cetak ulang | M |
 | FR-POS-15 | Cetak ulang struk (tanda "SALINAN") dari riwayat transaksi | M |
 | FR-POS-16 | **Void nota** yang sudah selesai: butuh `sales.void`/otorisasi + alasan; membuat mutasi balik stok, membatalkan pembayaran & piutang terkait, tercatat audit. Hanya untuk nota shift yang masih OPEN; selain itu gunakan retur | M |
-| FR-POS-17 | **Retur penjualan**: dari no. nota (scan barcode di struk) → pilih baris & qty retur (≤ qty terjual − sudah diretur) → kembali ke stok (ya/tidak, mis. rusak) → pengembalian: tunai dari laci / potong piutang / saldo deposit (*Could*) | S (tidak pernah dipakai di iPOS) |
+| FR-POS-17 | **Retur penjualan**: dari no. nota (ketik nomor / cari pelanggan) → pilih baris & qty retur (≤ qty terjual − sudah diretur) → kembali ke stok (ya/tidak, mis. rusak) → pengembalian: tunai dari laci / potong piutang / saldo deposit (*Could*) | S (tidak pernah dipakai di iPOS) |
 | FR-POS-18 | **Shift kasir**: buka (modal awal), satu shift OPEN per perangkat; tutup = input hitung fisik per pecahan → sistem menghitung *expected cash* = modal + penjualan cash + kas masuk + pelunasan piutang tunai − kas keluar − refund tunai; selisih wajib catatan bila ≠ 0; cetak rekap shift | M |
 | FR-POS-19 | Kas masuk/keluar laci selama shift dengan kategori & catatan (mis. "Beli es", "Setor ke owner") | M |
-| FR-POS-20 | Otorisasi supervisor via PIN (lihat §4.2) | M |
+| FR-POS-20 | Otorisasi Owner via PIN di layar kasir (lihat §4.2) | M |
 | FR-POS-21 | Info pelanggan di layar: grup, saldo piutang, sisa limit | M |
 | FR-POS-22 | Shortcut keyboard (tabel di bawah), bisa dilihat dengan F1 | M |
-| FR-POS-23 | Penomoran nota `KSR/K01/2610/00001` & `JL/K01/2610/00001` (tipe/kode perangkat/YYMM/urut bulanan) — §6.7 | M |
+| FR-POS-23 | Penomoran nota **sama dengan iPOS**: `0002061/KSR/UTM/1026` & `0001789/JL/UTM/1026` (urut 7 digit/tipe/gudang/BLNTHN, reset tahunan), melanjutkan nomor terakhir iPOS — §6.7 | M |
 | FR-POS-24 | Tampilan pelanggan (customer display) layar kedua | C |
 | FR-POS-25 | **Dua mode penjualan** (D-1): **Kasir** (`channel = KASIR`, prefix KSR) — cepat, default pelanggan UMUM, dibayar lunas; **Faktur Penjualan** (`channel = FAKTUR`, prefix JL) — pelanggan wajib, boleh kredit/sebagian kredit, ongkos angkut, cetak faktur A5/A4 + struk. **Kedua mode** boleh "barang diambil nanti" (§5.3b). Keduanya satu tabel `sales`, satu `salesService.complete` | M |
 | FR-POS-26 | **Biaya lain / ongkos angkut** di header nota (nominal + keterangan), masuk total & dicetak; dilaporkan terpisah dari penjualan barang | M |
 | FR-POS-27 | **Harga terakhir pelanggan**: saat memilih barang di Faktur, tampilkan 3 harga jual terakhir barang+satuan itu ke pelanggan ini (tanggal & harga) sebagai acuan negosiasi | M |
 | FR-POS-28 | **Potongan nota nominal** untuk membulatkan total (mis. 1.215.000 → 1.200.000): input "Total jadi" menghitung potongan otomatis; persen tetap tersedia. Saran diskon dari `customer_groups.discount_percent` | M |
 | FR-POS-29 | Metode **Transfer per rekening** (BCA, Mandiri, …) dengan no. referensi — tidak lagi dicatat sebagai tunai + keterangan "TF" (DQ-10) | M |
+| FR-POS-30 | **Terbilang** total dalam Bahasa Indonesia di faktur & bukti bayar ("tiga ratus tujuh puluh lima ribu rupiah") — satu fungsi `terbilang()` di `src/shared`, diuji unit (0, belasan, "seratus/seribu", juta, miliar) | M |
 
 **Shortcut kasir (default, dapat diatur):**
 
@@ -628,8 +638,8 @@ Rencana lengkap (alur, contoh angka, kasus tepi, tugas per sprint):
 | FR-PKP-01 | Di dialog bayar (mode Kasir **dan** Faktur): pilihan **"Barang diambil nanti"**; per baris boleh isi qty yang dibawa sekarang (sisanya belum diambil); rencana tanggal ambil & catatan opsional. Pelanggan wajib bernama (UMUM ditolak; tambah pelanggan cepat nama + HP) | M |
 | FR-PKP-02 | Saat nota selesai: qty dibawa sekarang → mutasi `SALE` (stok fisik −); sisa → **reservasi** (`reserved_qty` +, stok fisik **tetap**). Validasi terhadap stok **Tersedia** | M |
 | FR-PKP-03 | Pembayaran tidak bergantung pengambilan: nota lunas/kredit sejak tanggal transaksi | M |
-| FR-PKP-04 | Struk/faktur mencetak daftar barang belum diambil + QR nomor nota sebagai bukti untuk mengambil | M |
-| FR-PKP-05 | Layar **Pengambilan Barang** (F11): cari pelanggan / scan QR / ketik nomor nota → semua sisa barang pelanggan dari semua nota → qty diambil per baris (≤ sisa, tombol "Ambil semua") → nama penerima (wajib, boleh diwakilkan), HP, kendaraan, metode diambil/diantar (+tujuan), catatan → simpan `AB/…` | M |
+| FR-PKP-04 | Nota/faktur mencetak blok **BARANG BELUM DIAMBIL** + nomor nota **lebar ganda** sebagai bukti untuk mengambil (QR hanya bila kelak printer thermal) | M |
+| FR-PKP-05 | Layar **Pengambilan Barang** (F11): cari nama pelanggan / ketik nomor nota (cukup angka urutnya) → semua sisa barang pelanggan dari semua nota → qty diambil per baris (≤ sisa, tombol "Ambil semua") → nama penerima (wajib, boleh diwakilkan), HP, kendaraan, metode diambil/diantar (+tujuan), catatan → simpan `AB/…` | M |
 | FR-PKP-06 | Simpan pengambilan = mutasi `SALE_PICKUP` (stok fisik −, dipesan −) dengan HPP saat itu, `picked_up_qty` +, status nota `PARTIAL`/`COMPLETE`, audit; satu transaksi DB | M |
 | FR-PKP-07 | Cetak **Bukti Pengambilan** 2 rangkap (pelanggan & arsip) dengan tanda tangan penerima & petugas | M |
 | FR-PKP-08 | **Riwayat pengambilan** per nota, per pelanggan, dan per periode (no. AB, tanggal, barang, qty, penerima, petugas, status) — append-only | M |
@@ -715,8 +725,8 @@ Rencana lengkap (alur, contoh angka, kasus tepi, tugas per sprint):
 | FR-SYS-01 | Wizard first-run: profil toko (nama, alamat, telepon, logo), akun Owner, gudang default, printer struk, kode perangkat hub `K01` | M |
 | FR-SYS-02 | Manajemen user (Owner): username, nama, role, password (backoffice) + PIN 6 digit (kasir & otorisasi), aktif/nonaktif — user tidak pernah dihapus | M |
 | FR-SYS-03 | Login: username + password atau username + PIN (mode kasir); kunci 5 menit setelah 5 gagal | M |
-| FR-SYS-04 | Template struk (JSONB `settings.receipt`): lebar 58/80 mm, header/footer bebas, tampilkan logo, kasir, hemat diskon, info piutang, QR nota | M |
-| FR-SYS-05 | Pengaturan printer: transport, alamat/port/nama printer, lebar, code page, test print, test laci | M |
+| FR-SYS-04 | Template nota (JSONB `settings.receipt`): ukuran kertas (½ / 1 halaman continuous form), kolom (80/96/137), draft/NLQ, header/footer bebas, kasir, info piutang, blok barang belum diambil, kolom tanda tangan | M |
+| FR-SYS-05 | Pengaturan printer **per peran** (`faktur` → LX-310 ESC/P, `struk` → thermal ESC/POS): nama antrean Windows (hanya antrean siap; pilih otomatis USB+Normal), panjang halaman / lebar struk, potong kertas, jumlah salinan, **cetak uji & atur posisi kertas**, mode laci (§8.2). Job dipantau setelah kirim — tertahan Error/Offline → dibatalkan + pesan jelas | M |
 | FR-SYS-06 | Audit log viewer (Owner): filter user/aksi/tanggal, read-only | M |
 | FR-SYS-10–12 | Backup & restore (§3.8) | M |
 
@@ -728,10 +738,10 @@ lengkap: Analisis §4.
 | ID | Requirement | Prio |
 |---|---|:-:|
 | FR-MIG-01 | Wizard **Impor dari iPOS** (Owner): pilih file `.i5bu` → hitung SHA-256 → `pg_restore` ke DB sementara `ipos_import` memakai binaries PG bawaan → pratinjau jumlah per entitas + daftar masalah kualitas data (DQ-*) → konfirmasi → transformasi dalam **satu transaksi** → hapus DB sementara | M |
-| FR-MIG-02 | Lingkup bertahap yang bisa dipilih: **Master** (satuan, kategori, item, satuan turunan, harga, grup, pelanggan, supplier, bank) → **Stok awal** (qty `tbl_itemstok`, HPP = nilai lapisan FIFO / qty, mutasi `OPENING`) → **Piutang terbuka** (per nota, nomor/tanggal/jatuh tempo asli, `receivables.source_type = OPENING`) → **Histori** opsional (penjualan, pembelian, pelunasan, kas — tanpa mutasi stok, `sales.source = IPOS_IMPORT`) | M (histori: S) |
+| FR-MIG-02 | Lingkup bertahap yang bisa dipilih: **Master** (satuan, kategori, item, satuan turunan, harga, grup, pelanggan, supplier, bank) → **Stok awal** (qty `tbl_itemstok`; **lapisan FIFO disalin** dari `tbl_item_im` sisa > 0, mutasi `OPENING`) → **Piutang terbuka** (per nota, nomor/tanggal/jatuh tempo asli, `receivables.source_type = OPENING`) → **Histori 2 tahun** (keputusan owner: **ya** — 9.705 nota penjualan beserta HPP per baris dari `tbl_item_ik`, 450 faktur pembelian, 2.548 pelunasan piutang, 498 kas keluar; tanpa mutasi stok, `sales.source = IPOS_IMPORT`) agar laporan & harga terakhir pelanggan langsung punya riwayat | M |
 | FR-MIG-03 | Setiap entitas impor tercatat di `legacy_refs` (kode lama → id baru) dan setiap proses di `import_batches` (`purpose` DEVELOPMENT/REHEARSAL/GO_LIVE); impor lingkup yang sudah terisi **ditolak** — ulangi lewat Reset data persiapan (FR-MIG-08) | M |
 | FR-MIG-04 | Rekonsiliasi otomatis setelah impor, ditampilkan & bisa dicetak: jumlah item/pelanggan, total qty & nilai stok vs iPOS, total & jumlah piutang terbuka vs iPOS (target: selisih 0) | M |
-| FR-MIG-05 | Saldo awal **hutang supplier** diinput manual per faktur (data pelunasan hutang di iPOS kosong — DQ-11) | M |
+| FR-MIG-05 | **Hutang supplier — konfirmasi per faktur** (DQ-11): iPOS mencatat 49 faktur beli kredit (Rp 3,13 M) tanpa satu pun pelunasan. Importer menampilkan daftar ke-49 faktur (supplier, tanggal, nilai, jatuh tempo); Owner **mencentang yang benar-benar belum lunas** (boleh isi sisa bila sudah dicicil) → hanya itu yang menjadi `payables` OPENING. Faktur lain tetap masuk histori sebagai lunas. Tambahan hutang di luar iPOS bisa diinput manual | M |
 | FR-MIG-06 | Laporan duplikat pelanggan (DQ-4) + alat **gabung pelanggan** (memindahkan piutang & histori, audit) | S |
 | FR-MIG-07 | Importer hanya membaca file sumber, tidak mengirimnya ke mana pun, dan tidak mengimpor user/password, jurnal akuntansi, maupun log aktivitas iPOS | M |
 | FR-MIG-08 | **Mode Persiapan** (sebelum go-live, banner di semua layar): Owner boleh **Reset data persiapan** (backup otomatis → hapus semua data bisnis hasil impor & transaksi uji, simpan user/perangkat/pengaturan/audit) lalu impor ulang tanpa batas — untuk pengembangan dan gladi | M |
@@ -864,51 +874,77 @@ Isolation default `READ COMMITTED` + row lock eksplisit:
    belum ada.
 3. `SELECT … FROM stock_balances WHERE (product_id, warehouse_id) IN (…)
    ORDER BY product_id, warehouse_id FOR UPDATE`.
-4. Untuk mutasi masuk berbiaya: `SELECT … FROM products WHERE id = ANY($1)
-   ORDER BY id FOR UPDATE` (update `avg_cost`).
-5. Validasi stok (FR-INV-10), tulis movement, update balance, update
-   avg_cost — semua dalam satu `withTransaction()`.
+4. `SELECT … FROM products WHERE id = ANY($1) ORDER BY id FOR UPDATE`
+   untuk **semua** produk terdampak — lock produk menyerialkan akses ke
+   lapisan FIFO-nya; lapisan lalu dibaca `ORDER BY received_at, id FOR UPDATE`.
+5. Validasi stok (FR-INV-10), pakai/buat lapisan FIFO, tulis movement,
+   update balance & `last_purchase_cost` — semua dalam satu `withTransaction()`.
 
 Urutan lock yang konsisten mencegah deadlock antara dua kasir/HP.
 Deadlock/serialization error (`40P01`, `40001`) di-retry otomatis maks 3×
 oleh `withTransaction`.
 
-### 6.6 HPP rata-rata bergerak
+### 6.6 HPP metode FIFO (sama seperti iPOS — ADR-04)
 
-Untuk mutasi masuk berbiaya (`qty_in > 0`, `cost_in` per satuan dasar),
-dengan `Q` = total stok semua gudang sebelum mutasi dan `A` =
-`products.avg_cost`:
+Setiap **barang masuk berbiaya** membuat satu **lapisan** di
+`stock_cost_layers` (produk × gudang, tanggal masuk, qty masuk, **qty sisa**,
+harga per satuan dasar). Setiap **barang keluar** menghabiskan lapisan
+**tertua lebih dulu** dan mencatat pemakaiannya di `stock_layer_consumptions`.
 
 ```
-Q ≤ 0  → A' = cost_in
-Q > 0  → A' = (Q × A + qty_in × cost_in) / (Q + qty_in)     (dibulatkan 4 desimal)
+Contoh Urea (satuan dasar KG):
+  01-10  beli 100 ZAK @ 355.000  → lapisan A: 5.000 kg @ 7.100/kg
+  15-10  beli 100 ZAK @ 380.000  → lapisan B: 5.000 kg @ 7.600/kg
+  20-10  jual 120 ZAK (6.000 kg) → pakai A 5.000 kg @ 7.100 + B 1.000 kg @ 7.600
+         HPP baris = (35.500.000 + 7.600.000) / 6.000 = 7.183,33/kg
+  Sisa persediaan = lapisan B 4.000 kg @ 7.600 = Rp 30.400.000
 ```
 
-Mutasi keluar memakai `A` saat itu sebagai `unit_cost` dan menyimpannya
-ke `sale_items.cost_per_base` (snapshot — laba historis tidak berubah
-walau HPP berubah). Retur jual masuk dengan `cost_per_base` dari nota
-asal. Retur beli keluar dengan `A` saat itu (selisih terhadap harga beli
-= keterbatasan v1, dicatat). Mutasi antar gudang tidak mengubah `A`.
+| Mutasi | Aturan lapisan |
+|---|---|
+| Penerimaan / faktur pembelian | Lapisan baru, harga = (total baris + alokasi ongkos) / base_qty |
+| Penjualan dibawa langsung, **pengambilan barang** (`SALE_PICKUP`), retur beli, penyesuaian −, opname −, rakitan keluar | Habiskan lapisan tertua di gudang itu; `unit_cost` mutasi = rata-rata tertimbang lapisan yang terpakai. Retur beli menghabiskan lapisan **dari penerimaan asalnya** lebih dulu, baru FIFO |
+| Void, batal pengambilan, retur jual (restock) | Lapisan baru dengan **harga persis** dari pemakaian yang dibalik, `received_at` = tanggal lapisan asal (urutan FIFO terjaga) |
+| Mutasi antar gudang | Habiskan lapisan di gudang asal → lapisan baru di gudang tujuan dengan harga & tanggal yang sama |
+| Penyesuaian +, opname + | Lapisan baru seharga harga beli terakhir (`last_purchase_cost`) |
+| Saldo awal impor iPOS | **Salin lapisan FIFO iPOS** (`tbl_item_im` dengan sisa > 0) apa adanya → nilai persediaan sama persis dengan iPOS |
+| Barang belum diambil (reservasi) | **Belum** memakai lapisan; HPP ditetapkan saat diambil |
+
+**Stok minus** (dokumen sinkron / otorisasi Owner) — lapisan habis: kekurangan
+dibebankan dengan harga beli terakhir dan ditandai `is_estimated = true`
+(laporan laba menandai "HPP estimasi"). Tidak ada penghitungan ulang mundur
+saat barang datang kemudian — sama seperti perilaku iPOS, tapi lebih baik
+dari iPOS yang memberi HPP 0 (DQ-3).
+
+`sale_items.cost_per_base` = snapshot HPP dari lapisan yang terpakai (laba
+historis tidak berubah). Invarian harian: `Σ stock_cost_layers.qty_remaining
+= stock_balances.qty` per produk × gudang (bila stok ≥ 0); **nilai
+persediaan = Σ qty_remaining × unit_cost**.
 
 ### 6.7 Penomoran dokumen
 
-Format `{TIPE}/{KODE_PERANGKAT}/{YYMM}/{NNNNN}` — mis.
-`KSR/K01/2610/00001`, urut **reset bulanan**. Kode tipe mengikuti yang
-sudah dikenal toko dari iPOS (D-8): `KSR` penjualan kasir, `JL` faktur
-penjualan, `RJ` retur jual, `AB` ambil barang, `PO`, `PB` penerimaan, `BL`
-faktur pembelian, `RB` retur beli, `OP` opname, `PS` penyesuaian, `MG`
-mutasi gudang, `RK` rakitan, `KM`/`KK` kas masuk/keluar, `BP` bayar
-piutang, `BH` bayar hutang, `SH` shift. Dokumen hasil impor iPOS memakai
-nomor aslinya (`0000720/KSR/UTM/0426`) — polanya berbeda sehingga tidak
-pernah bentrok.
+**Sama persis dengan iPOS** (keputusan owner Q-16): format
+`{URUT}/{TIPE}/{DEPT}/{BLNTHN}` — mis. `0001789/JL/UTM/1026`.
 
-- Dokumen dibuat di hub: `doc_sequences(prefix, device_code, period)` —
-  `UPDATE … SET last_no = last_no + 1 RETURNING last_no` di dalam
-  transaksi dokumen (rollback = nomor tidak terbuang).
-- Dokumen dibuat perangkat offline: nomor dibuat perangkat dari counter
-  lokalnya; server hanya memvalidasi keunikan (`UNIQUE(number)`); saat
-  pairing ulang, counter perangkat diinisialisasi dari nomor maksimum di
-  server.
+| Bagian | Aturan (dari `tbl_formatnotr` iPOS) |
+|---|---|
+| `URUT` | Nomor urut **per tipe per gudang**, **reset tiap tahun** (1 Januari), diisi nol di depan: **7 digit** untuk `KSR`, `JL`, `BL`; **4 digit** untuk tipe lain (seperti iPOS) |
+| `TIPE` | Kode iPOS yang sudah dikenal: `KSR` penjualan kasir, `JL` faktur penjualan, `RJ` retur jual, `BL` faktur pembelian, `RB` retur beli, `BP` bayar piutang, `KASO` kas keluar, `KSIN` kas masuk, `PJ` pesanan jual, `TRF` mutasi gudang. Tipe baru (tidak ada di iPOS): `AB` ambil barang, `BH` bayar hutang, `PS` penyesuaian stok, `SH` shift, `RK` rakitan, `PO` pesanan beli |
+| `DEPT` | Kode gudang (`UTM`) |
+| `BLNTHN` | Bulan + 2 digit tahun dari tanggal dokumen (`1026` = Oktober 2026) |
+
+- **Melanjutkan nomor iPOS:** saat impor go-live, nilai terakhir per tipe
+  (`tbl_formatnotr.nomor`, mis. JL = 1788, KSR = 2060 per backup
+  2026-10-24) disalin ke `doc_sequences`, sehingga nota pertama di sistem
+  baru adalah lanjutan langsung dari iPOS (`0001789/JL/UTM/1026`). Histori
+  hasil impor memakai nomor aslinya; `UNIQUE(number)` menjamin tidak bentrok.
+- `doc_sequences(doc_type, dept_code, year)` — `UPDATE … SET last_no =
+  last_no + 1 RETURNING last_no` **di dalam transaksi dokumen** (rollback =
+  nomor tidak terbuang). Hanya **hub** yang menomori dokumen di v1 (HP staf
+  tidak membuat nota; hitungan opname tidak bernomor).
+- Mode Terminal (v1.x, kasir kedua offline) kelak memakai kode `DEPT`
+  sendiri (mis. `UTM2`) agar urutnya tidak bentrok — diputuskan saat fitur
+  itu dibuat.
 - Nota tertahan (`HELD`) belum bernomor.
 
 ### 6.8 JSONB
@@ -996,7 +1032,7 @@ baris/bulan. Target di bawah sengaja jauh di atasnya (headroom ±50×).
 | NFR-SEC-02 | Semua endpoint selain `/health` & `/devices/pair` butuh token; **tidak ada bypass untuk request dari localhost** (proxy seperti `tailscale serve` membuat request tampak dari 127.0.0.1) |
 | NFR-SEC-03 | Password: argon2id; PIN 6 digit di-hash + lockout; token = 32 byte acak, disimpan sebagai hash SHA-256 |
 | NFR-SEC-04 | Electron: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP ketat, IPC memvalidasi pengirim & payload (Zod) |
-| NFR-SEC-05 | Audit log append-only untuk: login/gagal login, otorisasi supervisor, void, retur, ubah harga, penyesuaian/opname stok, ubah user/role, restore, tutup shift dengan selisih |
+| NFR-SEC-05 | Audit log append-only untuk: login/gagal login, otorisasi Owner, void, retur, ubah harga, penyesuaian/opname stok, ubah user/role, restore, tutup shift dengan selisih |
 | NFR-SEC-06 | Rate limit: login 10/menit/IP; API umum 600/menit/perangkat |
 | NFR-SEC-07 | Detail lengkap: `rules/security-standards.md` |
 
@@ -1023,53 +1059,145 @@ baris/bulan. Target di bawah sengaja jauh di atasnya (headroom ±50×).
 
 ## 8. Peripherals & Network Integration
 
-### 8.1 Cetak struk ESC/POS (tanpa dialog Windows)
+### 8.1 Cetak nota langsung (tanpa dialog Windows)
 
-**Arsitektur:** `ReceiptBuilder` (data → model struk) → `EscPosEncoder`
-(model → `Uint8Array`) → `PrinterTransport` (kirim byte). Dijalankan di
-main process, dipanggil renderer via IPC `pos:print`.
+**Toko memakai DUA printer** (foto struk & faktur iPOS, 2026-10-24). Setiap
+jenis dokumen diarahkan ke printernya lewat setting `printer.roles`:
+
+| Peran | Printer | Bahasa | Dokumen |
+|---|---|---|---|
+| `faktur` | **Epson LX-310** (USB, driver `LX-310_Drv_Ver1_1497909`) | ESC/P | Faktur Penjualan (JL), Bukti Pengambilan (AB), bukti bayar piutang, rekap shift |
+| `struk` | **Printer struk thermal** (model & lebar menyusul — Q-17) | ESC/POS | Struk kasir (KSR) penjualan kecil |
+
+**Struk kasir (KSR) meniru struk iPOS:** "MANDIRI TANI" besar di tengah;
+alamat & telepon; No. nota + tanggal (kanan), Kasir + jam, Pel. (UMUM/CASH);
+per barang: nama, lalu `harga x qty SATUAN = jumlah`; **TOTAL**, `BRS=n ,
+QTY=x`, Tunai, Kembali; catatan "Barang yang telah dibeli tidak dapat
+dikembalikan kecuali ada perjanjian / Terimakasih" (dibungkus otomatis
+mengikuti lebar kertas); feed lalu potong kertas (bila ada pemotong).
+Perbaikan vs iPOS: nama kasir asli (bukan ADMIN), label TOTAL, tidak ada
+teks terpotong ("Email: s").
+
+**Printer faktur: Epson LX-310** — printer **dot matrix 9-pin, kertas
+continuous form (sobek di perforasi)**. Akibatnya:
+
+| Aspek | LX-310 (v1) | Printer thermal (bila kelak dipakai) |
+|---|---|---|
+| Bahasa perintah | **ESC/P** (Epson) | ESC/POS |
+| Kertas | Continuous form, lebar cetak 8" — **80 kolom** (10 cpi), 96 (12 cpi), 137 (condensed) | Gulungan 58/80 mm (32/48 kolom) |
+| Panjang halaman | Diatur (`ESC C`) — mis. ½ halaman 5,5" = 33 baris @ 6 lpi; nota panjang lanjut ke halaman berikut dengan "Hal 1/2" | Tidak ada halaman |
+| Potong kertas | Tidak ada — maju ke perforasi (tear-off) | Pemotong otomatis |
+| Laci uang | **Tidak ada port laci** (§8.2) | RJ11 di printer |
+| QR / barcode | Tidak bawaan (bit-image lambat & buram) → **tidak dipakai** | Bawaan |
+| Rangkap | Bisa kertas NCR 2–3 rangkap (asli pelanggan + arsip) | Satu lembar |
+| Kecepatan | ±3–6 dtk per ½ halaman | < 1 dtk |
+
+**Arsitektur:** `DocumentBuilder` (data nota/faktur/bukti ambil → model
+baris teks per halaman) → **`PrinterEncoder`** dipilih dari setting
+`printer.language`: **`escp`** (LX-310, default v1) atau `escpos` (thermal)
+→ `PrinterTransport` (kirim byte). Dijalankan di main process, dipanggil
+renderer via IPC `pos:printer:print`.
 
 | Transport | Implementasi | Kapan |
 |---|---|---|
-| `network` | Socket TCP mentah ke `ip:9100` (modul `net` Node, tanpa dependensi) | Printer LAN/Wi-Fi |
-| `serial` | `serialport` (COMx, baud dari setting) | Printer serial / USB-serial virtual COM |
-| `windows-raw` | Kirim job datatype `RAW` ke antrean printer Windows (driver vendor terpasang) lewat modul native/helper — **tidak** memunculkan dialog | Printer USB (paling umum) — dipilih atas akses libusb langsung yang butuh driver WinUSB/Zadig |
+| `windows-raw` | Job datatype `RAW` ke antrean printer Windows yang dibuat driver Epson — **tanpa** dialog | **v1: LX-310 via USB** — dibangun & diuji pertama di Sprint 6 |
+| `network` | Socket TCP mentah ke `ip:9100` (modul `net`) | Printer LAN (cadangan) |
+| `serial` | `serialport` (COMx) | Printer/pemicu laci serial (cadangan) |
 
-Kandidat encoder: `@point-of-sale/receipt-printer-encoder` (verifikasi di
-Sprint 6); bila tidak cocok, encoder minimal internal (perintah di bawah).
+Mode teks mentah dipilih (bukan cetak grafis lewat driver Windows): pada
+dot matrix, cetak teks memakai font printer → cepat, tajam, tembus ke
+rangkap NCR; cetak grafis lambat dan buram.
 
-**Perintah inti:**
+**Perintah inti ESC/P (LX-310):**
 
 | Fungsi | Byte |
 |---|---|
 | Inisialisasi | `ESC @` → `1B 40` |
-| Code page (PC437/PC850) | `ESC t n` → `1B 74 n` |
-| Rata kiri/tengah/kanan | `ESC a n` → `1B 61 00/01/02` |
-| Tebal on/off | `ESC E n` → `1B 45 01/00` |
-| Ukuran ganda (total) | `GS ! n` → `1D 21 11` |
-| Feed n baris | `ESC d n` → `1B 64 n` |
-| Potong kertas | `GS V 66 0` → `1D 56 42 00` |
-| **Buka laci** (pin 2, RJ11 di printer) | `ESC p 0 25 250` → `1B 70 00 19 FA` (pin 5: `1B 70 01 19 FA`, setting) |
-| QR code (no. nota) | `GS ( k …` (model 2) |
+| Tabel karakter PC437 | `ESC t 1` → `1B 74 01` |
+| Mode draft (cepat) / NLQ (rapi) | `ESC x 0/1` → `1B 78 00/01` (setting; default draft) |
+| Pitch 10 cpi / 12 cpi / condensed | `ESC P` → `1B 50` · `ESC M` → `1B 4D` · `SI` → `0F` (batal: `DC2` → `12`) |
+| Tebal on/off | `ESC E` / `ESC F` → `1B 45` / `1B 46` |
+| Lebar ganda (judul, TOTAL, no. nota) on/off | `ESC W 1/0` → `1B 57 01/00` |
+| Spasi baris 1/6" | `ESC 2` → `1B 32` |
+| Panjang halaman n inci | `ESC C NUL n` → `1B 43 00 n` (½ halaman: n = 5,5 → pakai `ESC C n` 33 baris) |
+| Ganti halaman / maju ke perforasi | `FF` → `0C` |
+| Baris baru | `CR LF` → `0D 0A` |
 
-**Tata letak:** 58 mm = 32 karakter/baris (Font A), 80 mm = 48. Kolom
-qty/harga dirata kanan; nama barang panjang dibungkus (wrap); angka
-format `id-ID`. Karakter non-ASCII di-transliterasi (tidak semua printer
-mendukung UTF-8).
+**Kertas (dikonfirmasi foto faktur iPOS, 2026-10-24):** continuous form
+**½ halaman ±9,5" × 5,5"**, 1 lembar (bukan NCR), lubang sprocket kiri-kanan.
+Acuan visual lokal: `.claude/file/contoh-faktur-ipos-LX310.jpg` (gitignored —
+memuat nama pelanggan).
+
+**Tata letak Faktur Penjualan (JL) — meniru faktur iPOS** yang sudah dikenal
+toko & pelanggan. 12 cpi = **96 kolom**, 6 lpi = **33 baris** per ½ halaman:
+
+```
+[logo] FAKTUR PENJUALAN            No Transaksi : 0001789/JL/UTM/1026      Dept : UTM
+       MANDIRI TANI                Tanggal      : 24/10/2026 12.05         User : SARI
+       JL. POROS RAPP km. 72       Pelanggan    : PAK PAIMA SIMAMORA JALAN SEHAT
+       0813-6144-1706              Alamat       : JL. SEHAT
+------------------------------------------------------------------------------------------------
+No Kode Item      Nama Item                         Jml Satuan        Harga  Pot%          Total
+------------------------------------------------------------------------------------------------
+ 1 NARA UP 5      NARA UP 5 LTR                    1,00 PAIL     330.000,00  0,00     330.000,00
+ 2 METSULINDO 100 METSULINDO 100 GR                1,00 BTL       45.000,00  0,00      45.000,00
+------------------------------------------------------------------------------------------------
+Keterangan :                       Jml Item   :   2,00    Sub Total   :              375.000,00
+                                   Potongan   :   0,00    Biaya Lain  :                    0,00
+       Penerima                    Tanggal Jt : 03/11/2026 TOTAL AKHIR :             375.000,00
+                                                          Tunai       :                    0,00
+                                                          Transfer    :                    0,00
+   (..............)                                       Kredit      :              375.000,00
+Terbilang : tiga ratus tujuh puluh lima ribu rupiah       Kembali     :                    0,00
+```
+
+| Bagian | Isi | Catatan |
+|---|---|---|
+| Kop kiri | Logo (opsional), "FAKTUR PENJUALAN" tebal, nama, alamat, telepon toko dari `settings.store` | Logo dicetak sebagai bit-image ESC/P (`ESC *`, ±1") bila `receipt.show_logo` — lebih lambat ±1 dtk; default **aktif** agar mirip iPOS |
+| Kop kanan | No Transaksi (**tebal**), Tanggal + jam, Pelanggan, Alamat, Dept (kode gudang), User (nama kasir login — bukan "ADMIN") | "Kode Sales" & "PPN" iPOS tidak dicetak (tidak dipakai; PPN muncul bila FR-POS-13 aktif) |
+| Tabel | No · Kode Item · Nama Item · Jml · Satuan · Harga · Pot% · Total | Lebar kolom: 2·14·30·6·6·12·5·13 (+ spasi = 96). Nama/kode panjang dibungkus ke baris berikut seperti iPOS |
+| Ringkasan tengah | Jml Item, Potongan, Biaya Lain, Tanggal Jt (hanya bila ada kredit) | |
+| Ringkasan kanan | Sub Total, **TOTAL AKHIR** (tebal), lalu **hanya metode yang dipakai**: Tunai, Transfer, QRIS, Kredit, Kembali | Baris iPOS yang selalu 0 (DP PO, Deposit, K. Debit, K. Kredit) tidak dicetak |
+| Kiri bawah | Keterangan, kotak tanda tangan **Penerima**, **Terbilang** (FR-POS-30) | Ruang kosong di kiri bawah dibiarkan untuk **stempel toko** (dibubuhkan manual seperti sekarang) |
+| Tambahan | Blok **BARANG BELUM DIAMBIL** (FR-PKP-04) di atas Keterangan bila ada sisa; "Hal 1/2" bila baris barang > ±12 | Nota > 1 halaman: kop & header tabel diulang |
+
+- **Nota Kasir (KSR)**: dicetak di **printer struk thermal**, bukan LX-310
+  (format struk di atas). Bila printer struk mati, kasir boleh mencetak KSR
+  ke LX-310 dengan format ½ halaman (cadangan).
+- **Bukti Pengambilan (AB)**: ½ halaman, kop sama, judul "BUKTI PENGAMBILAN
+  BARANG", tabel Nama Item · Satuan · Diambil · Sisa · No. Nota asal,
+  penerima & kendaraan, tanda tangan Penerima + Petugas Gudang.
+- Rekap shift, bukti bayar piutang: ½ halaman, kop sama.
+- Font printer Sans Serif/Roman mode NLQ untuk faktur (lebih mirip iPOS),
+  draft untuk cetak cepat — setting. Angka rata kanan format `id-ID`;
+  karakter non-ASCII ditransliterasi (PC437).
+- **Cetak uji wajib di Sprint 6**: cetak faktur contoh di LX-310 asli dan
+  bandingkan dengan faktur iPOS (posisi di dalam perforasi, tidak terpotong,
+  terbaca setelah disobek).
 
 **Aturan:**
-- Struk dicetak **setelah** COMMIT (NFR-REL-02). Gagal cetak → transaksi
-  tetap sah, antrean cetak menyimpan job, tombol "Cetak ulang".
-- Laci dibuka hanya bila ada pembayaran Cash, atau manual dengan
-  permission `cash.drawer.open` (tercatat audit).
-- Timeout transport 5 dtk; error dipetakan ke pesan ("Printer tidak
-  merespons — cek kabel/daya/kertas").
-- Laporan A4 tetap memakai dialog cetak OS (`webContents.print`).
+- Dicetak **setelah** COMMIT (NFR-REL-02). Gagal cetak → transaksi tetap
+  sah, antrean cetak menyimpan job, tombol "Cetak ulang" (cetak ulang
+  bertanda "SALINAN").
+- Setelah cetak, kertas maju ke perforasi (`FF`) agar langsung bisa disobek;
+  menu **"Atur posisi kertas"** mencetak garis uji untuk menyetel awal
+  halaman (masalah umum continuous form).
+- Timeout transport 10 dtk (dot matrix lambat); error dipetakan ke pesan
+  ("Printer tidak merespons — cek kabel/daya/kertas/tuas kertas").
+- Laporan A4 tetap memakai dialog cetak OS (`webContents.print`) ke printer
+  lain/PDF.
 
 ### 8.2 Laci kasir
 
-Terhubung RJ11 ke printer; dibuka lewat perintah ESC/POS di atas. Test
-laci di halaman pengaturan printer.
+LX-310 **tidak punya port laci**. Setting `drawer.mode`:
+- `none` (**default v1**) — laci dibuka manual (kunci/tuas); tombol "Buka
+  laci" disembunyikan.
+- `serial` / `usb-trigger` — kotak pemicu laci terpisah (RJ11→USB/serial)
+  bila toko membelinya kelak.
+- `printer` — hanya untuk printer thermal ESC/POS (`1B 70 00 19 FA`).
+
+Rekonsiliasi kas laci saat tutup shift (FR-POS-18) tetap berjalan apa pun
+modenya.
 
 ### 8.3 Barcode scanner (HID keyboard emulation)
 
@@ -1123,11 +1251,11 @@ Sprint = 2 minggu. Detail checklist per sprint: `plan/`.
 | **M1 Master & Inventori** | S3 | Produk multi-satuan, barcode, harga, kategori/merek, pelanggan & grup, supplier, gudang, metode bayar (transfer per rekening); **importer iPOS lingkup Master** (pg_restore → transformasi → rekonsiliasi) | Master nyata toko terisi |
 | | S4 | Stock service (ledger + lock + HPP), **impor stok awal dari iPOS**, kartu stok (stok buku & fisik), penyesuaian, opname (desktop), stok menipis, nilai persediaan, cek konsistensi harian | Stok = iPOS |
 | **M2 POS Kasir** | S5 | Layar kasir: cari/scan, keranjang (Zustand), resolusi harga + **ubah harga baris**, satuan (KG/ZAK), potongan nota nominal, shortcut, scanner hook | Bisa membuat keranjang |
-| | S6 | Shift buka/tutup, pembayaran tunai/transfer/QRIS, simpan transaksi (stok+kas), ESC/POS print & laci, cetak ulang, kas masuk/keluar | **Transaksi KSR pertama end-to-end** |
-| | S7 | **Faktur Penjualan (JL)**: pelanggan wajib, tunai+kredit, ongkos angkut, harga terakhir pelanggan, cetak faktur; **terjual-belum-diambil + layar Pengambilan Barang (AB)**, riwayat & bukti pengambilan; hold/resume, void, otorisasi supervisor | **Transaksi JL + piutang + pengambilan end-to-end** |
+| | S6 | Shift buka/tutup, pembayaran tunai/transfer/QRIS, simpan transaksi (stok+kas), **cetak ESC/P ke Epson LX-310 via USB** (nota ½ halaman, atur posisi kertas), cetak ulang, kas masuk/keluar | **Transaksi KSR pertama end-to-end** |
+| | S7 | **Faktur Penjualan (JL)**: pelanggan wajib, tunai+kredit, ongkos angkut, harga terakhir pelanggan, cetak faktur; **terjual-belum-diambil + layar Pengambilan Barang (AB)**, riwayat & bukti pengambilan; hold/resume, void, otorisasi PIN Owner | **Transaksi JL + piutang + pengambilan end-to-end** |
 | **M3 Pembelian & Hutang/Piutang** | S8 | Faktur pembelian langsung (BL), riwayat harga beli, retur jual & retur beli, PO + penerimaan (S) | Siklus beli |
 | | S9 | Pelunasan piutang multi-nota + alokasi, jatuh tempo, aging, **impor piutang terbuka iPOS** + rekonsiliasi, saldo awal hutang manual | Siklus uang = iPOS |
-| **M4 Laporan** | S10 | Laba kotor (barang/faktur/periode), arus kas, Penjualan Rekap & Pembelian Detail ala iPOS, rekap harian pupuk, barang belum diambil & riwayat pengambilan, dashboard owner, ekspor Excel/PDF; impor histori iPOS (S) | Laporan owner |
+| **M4 Laporan** | S10 | Laba kotor (barang/faktur/periode), arus kas, Penjualan Rekap & Pembelian Detail ala iPOS, rekap harian pupuk, barang belum diambil & riwayat pengambilan, dashboard owner, ekspor Excel/PDF; **impor histori iPOS 2 tahun** | Laporan owner (dengan riwayat iPOS) |
 | **M5 Sinkronisasi** | S11 | Pairing perangkat, `sync/pull` (?since= + overlap, cursor keyset, tombstone), `sync/push` (op_id, idempoten), halaman Koneksi, firewall rule | API sync teruji |
 | | S12 | App mobile Capacitor: pairing QR, cek harga/stok offline, stok opname offline + push, status sync | HP staf tersinkron |
 | **M6 Hardening & Rilis** | S13 | Backup/restore, uji cabut listrik 50×, uji sleep/resume, uji 2 kasir+HP bersamaan (deadlock), performa 20k produk, ekspor diagnostik | Lolos NFR |
@@ -1151,17 +1279,20 @@ dengan catatan status.
 | Q-1 | Apakah toko PKP (wajib PPN)? | FR-POS-13 default |
 | Q-2 | Apakah menjual pupuk bersubsidi (RDKK / Kartu Tani, HET)? Perlu pencatatan khusus? | Bisa jadi modul baru |
 | Q-3 | Berapa terminal kasir sekarang & rencana? (bila > 1 PC kasir, Mode Terminal naik ke Must) | FR-SRV-11 |
-| Q-4 | Merek/model printer struk & cara sambung (USB/LAN/serial)? Lebar kertas? | §8.1 transport prioritas |
+| Q-4 | ~~Printer?~~ **Terjawab: Epson LX-310 (dot matrix, ESC/P), USB** — §8.1 | — |
+| Q-15 | ~~Kertas & laci?~~ **Terjawab:** faktur ½ halaman 9,5"×5,5", 1 lembar, format iPOS; **tidak ada laci uang**; struk KSR **di printer thermal terpisah** (koreksi asumsi sebelumnya) | §8.1–8.2 |
+| Q-17 | Printer struk thermal: merek/model, lebar kertas (58/80 mm — dari foto ±48 huruf ≈ 80 mm), ada pemotong otomatis? Sambung USB? Jawab dengan menu Uji Cetak → Printer Struk Kasir | §8.1 |
+| Q-16 | ~~Format nomor nota?~~ **Terjawab: sama dengan iPOS**, melanjutkan nomor terakhir iPOS — §6.7 | — |
 | Q-5 | Perlu batch & tanggal kedaluwarsa untuk pestisida/benih di v1? | FR-INV-11 |
 | Q-6 | ~~Data dari sistem lama?~~ **Terjawab:** iPOS 5 (`.i5bu`) + Excel — §5.9 | — |
 | Q-7 | HP staf Android semua? (iOS butuh perangkat Mac untuk build) | FR-MOB |
 | Q-8 | ~~Satuan dasar pupuk?~~ **Terjawab:** KG, ZAK = 50 KG untuk 13 pupuk ecer; pupuk lain hanya ZAK | — |
 | Q-9 | ~~RAM sawit?~~ **Terjawab:** di luar konteks — file tonase tidak dipakai; "RAM 1/RAM 2" hanya nama grup pelanggan | — |
-| Q-10 | **Metode HPP**: iPOS memakai FIFO. Lanjut FIFO (lebih rumit, angka laba sama seperti iPOS) atau pindah ke rata-rata bergerak (rekomendasi; laba per periode bisa berbeda sedikit)? | ADR-04, laporan laba |
-| Q-11 | Berapa sisa **hutang ke supplier** sebenarnya per faktur? (iPOS mencatat Rp 3,13 miliar tanpa satu pun pelunasan — DQ-11) | FR-MIG-05 |
+| Q-10 | ~~Metode HPP?~~ **Terjawab: FIFO seperti iPOS** — ADR-04, §6.6 | — |
+| Q-11 | Hutang supplier: **diselesaikan lewat centang per faktur saat impor** (FR-MIG-05) — owner cukup tahu faktur mana yang belum lunas, tidak perlu menyiapkan angka total | FR-MIG-05 |
 | Q-12 | Diskon grup Bronze/Silver/Gold (6/8/10%) masih berlaku? Selama ini jarang diterapkan | FR-POS-28 |
-| Q-13 | Perlukah histori 2 tahun (9.705 nota) diimpor untuk laporan pembanding, atau cukup master + stok + piutang terbuka? | FR-MIG-02 |
-| Q-14 | Siapa saja yang akan memakai sistem (nama & peran)? Saat ini semua transaksi atas nama ADMIN | FR-SYS-02 |
+| Q-13 | ~~Impor histori?~~ **Terjawab: ya, histori 2 tahun diimpor** — FR-MIG-02 | — |
+| Q-14 | ~~Pengguna?~~ **Terjawab: v1 dua role — KASIR dan OWNER** (§4). Nama akun dibuat di wizard first-run | — |
 
 ---
 
@@ -1174,7 +1305,7 @@ Semua di bawah `/api/v1`, JSON, auth `Authorization: Bearer <session>` +
 | Area | Endpoint |
 |---|---|
 | Sistem | `GET /health` · `GET/PUT /settings/:key` · `POST /backups` · `GET /backups` · `POST /backups/:id/restore` |
-| Auth | `POST /auth/login` · `POST /auth/pin-login` · `POST /auth/authorize` (otorisasi PIN supervisor → token sekali pakai) · `POST /auth/logout` · `GET /me` |
+| Auth | `POST /auth/login` · `POST /auth/pin-login` · `POST /auth/authorize` (otorisasi PIN Owner → token sekali pakai) · `POST /auth/logout` · `GET /me` |
 | Perangkat | `POST /devices/pairing-codes` · `POST /devices/pair` · `GET /devices` · `POST /devices/:id/revoke` |
 | Master | `GET/POST /products` · `GET/PUT /products/:id` · `GET /products/search?q=` · `GET /products/by-barcode/:code` · `GET /products/:id/price?unit=&group=&qty=` · CRUD `/units`, `/categories`, `/brands`, `/customers`, `/customer-groups`, `/suppliers`, `/warehouses`, `/payment-methods` · `POST /imports/products` |
 | Stok | `GET /stock/balances` · `GET /stock/card?product=&warehouse=&from=&to=` · CRUD+`POST /:id/post` untuk `/stock/opnames`, `/stock/adjustments`, `/stock/transfers`, `/assemblies` · `GET /stock/low` |

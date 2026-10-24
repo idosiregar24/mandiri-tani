@@ -79,12 +79,21 @@ lain. `apply()`:
 
 1. Urutkan (product_id, warehouse_id); `INSERT … ON CONFLICT DO NOTHING`
    baris balance yang belum ada.
-2. `SELECT … FOR UPDATE` balance terurut; produk yang avg_cost-nya berubah
-   di-lock `ORDER BY id FOR UPDATE`.
+2. Lock **semua** produk terdampak `ORDER BY id FOR UPDATE` (menyerialkan
+   akses lapisan FIFO-nya), lalu balance terurut `FOR UPDATE`.
 3. Validasi kebijakan stok negatif (FR-INV-10) — kecuali `source` dari sync.
-4. Hitung HPP rata-rata bergerak (PRD §6.6) untuk mutasi masuk berbiaya;
-   isi `unit_cost` & `avg_cost_after` di setiap movement.
-5. `INSERT stock_movements`, `UPDATE stock_balances`, `UPDATE products.avg_cost`.
+4. **HPP FIFO** (PRD §6.6, ADR-04): barang masuk berbiaya → lapisan baru di
+   `stock_cost_layers`; barang keluar → habiskan lapisan tertua
+   (`ORDER BY received_at, id FOR UPDATE`) dan catat
+   `stock_layer_consumptions`; `unit_cost` mutasi = rata-rata tertimbang
+   lapisan terpakai. Kekurangan lapisan (stok minus) = harga beli terakhir,
+   ditandai `is_estimated`.
+5. `INSERT stock_movements`, `UPDATE stock_balances`, update
+   `stock_cost_layers.qty_remaining` & `products.last_purchase_cost`.
+
+Invarian harian: `Σ stock_cost_layers.qty_remaining = stock_balances.qty`
+per produk × gudang (bila ≥ 0). Nilai persediaan = Σ `qty_remaining ×
+unit_cost` — bukan qty × harga master.
 
 Urutan lock yang konsisten = tidak ada deadlock antar kasir/HP. Jangan
 pernah lock balance di luar `apply()` dengan urutan lain.
@@ -99,12 +108,14 @@ memakai **tersedia**, validasi pengambilan memakai **fisik**. Invarian harian:
 
 ## 6. Penomoran dokumen
 
-Nomor dari `numbering.next(tx, prefix, deviceCode, date)` →
-`UPDATE doc_sequences SET last_no = last_no + 1 … RETURNING` (upsert)
-**di dalam transaksi dokumen** — rollback mengembalikan nomor. Format
-`KSR/K01/2610/00001` (tipe/perangkat/YYMM/urut bulanan, PRD §6.7); kode
-tipe mengikuti iPOS (KSR, JL, BL, BP, AB, …). Nomor dari perangkat offline diterima apa
-adanya dan dijaga `UNIQUE(number)`.
+Nomor dari `numbering.next(tx, docType, deptCode, date)` →
+`UPDATE doc_sequences SET last_no = last_no + 1 … RETURNING` (upsert per
+tahun) **di dalam transaksi dokumen** — rollback mengembalikan nomor.
+Format **sama dengan iPOS**: `0001789/JL/UTM/1026` (urut/tipe/gudang/BLNTHN,
+7 digit untuk KSR/JL/BL, 4 digit lainnya, reset tahunan — PRD §6.7). Saat
+go-live `last_no` diisi dari nomor terakhir iPOS. Format nomor hanya dibuat
+di `numbering.ts` (satu fungsi, diuji unit) — jangan merakit string nomor di
+tempat lain.
 
 ## 7. Query
 

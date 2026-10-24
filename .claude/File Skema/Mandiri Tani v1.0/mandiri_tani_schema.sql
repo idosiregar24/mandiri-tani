@@ -53,7 +53,7 @@ CREATE TABLE users (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   username         text NOT NULL,
   full_name        text NOT NULL,
-  role             text NOT NULL CHECK (role IN ('OWNER','SUPERVISOR','KASIR')),
+  role             text NOT NULL CHECK (role IN ('OWNER','KASIR')),   -- v1 dua role (D-12); role baru = migrasi CHECK + permissions.ts
   password_hash    text,                      -- argon2id; NULL = hanya login PIN
   pin_hash         text,                      -- argon2id dari PIN 6 digit
   failed_attempts  integer NOT NULL DEFAULT 0,
@@ -93,6 +93,7 @@ CREATE TABLE device_pairing_codes (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX device_pairing_codes_created_by_idx ON device_pairing_codes (created_by);
+CREATE INDEX device_pairing_codes_used_by_device_idx ON device_pairing_codes (used_by_device_id);
 
 CREATE TABLE sessions (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -110,7 +111,7 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 CREATE INDEX sessions_device_idx ON sessions (device_id);
 
--- Token otorisasi supervisor (sekali pakai, satu aksi) — FR-POS-20
+-- Token otorisasi PIN Owner (sekali pakai, satu aksi) — FR-POS-20
 CREATE TABLE authorization_grants (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   token_hash    text NOT NULL UNIQUE,
@@ -131,7 +132,7 @@ CREATE TABLE audit_logs (
   seq          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   at           timestamptz NOT NULL DEFAULT clock_timestamp(),
   actor_id     uuid REFERENCES users(id),
-  approved_by  uuid REFERENCES users(id),          -- pemberi otorisasi supervisor
+  approved_by  uuid REFERENCES users(id),          -- pemberi otorisasi (Owner)
   device_id    uuid REFERENCES devices(id),
   action       text NOT NULL,                       -- 'sale.void','price.update','auth.login_failed',...
   entity       text,
@@ -147,14 +148,18 @@ CREATE INDEX audit_logs_actor_idx ON audit_logs (actor_id);
 CREATE INDEX audit_logs_approved_by_idx ON audit_logs (approved_by);
 CREATE INDEX audit_logs_device_idx ON audit_logs (device_id);
 
--- Penomoran dokumen gap-free per prefix/perangkat/bulan — PRD §6.7 (D-8: kode tipe ala iPOS)
+-- Penomoran dokumen SAMA DENGAN iPOS — PRD §6.7 (Q-16):
+--   {URUT}/{TIPE}/{DEPT}/{BLNTHN}  mis. 0001789/JL/UTM/1026
+-- Urut per tipe per gudang, reset tiap tahun; saat go-live last_no diisi dari
+-- tbl_formatnotr.nomor iPOS sehingga nomor bersambung.
 CREATE TABLE doc_sequences (
-  prefix       text NOT NULL,          -- KSR, JL, RJ, PO, BL, RB, AB, OP, PS, MG, RK, KM, KK, BP, BH, SH
-  device_code  varchar(3) NOT NULL,
-  period       text NOT NULL,          -- YYMM (reset bulanan)
+  doc_type     text NOT NULL,          -- KSR, JL, RJ, BL, RB, BP, KASO, KSIN, PJ, TRF + baru: AB, BH, PS, SH, RK, PO
+  dept_code    text NOT NULL,          -- kode gudang, mis. UTM
+  year         smallint NOT NULL,      -- reset tahunan
+  digits       smallint NOT NULL DEFAULT 4,   -- 7 untuk KSR/JL/BL, 4 lainnya (seperti iPOS)
   last_no      integer NOT NULL DEFAULT 0,
   updated_at   timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (prefix, device_code, period)
+  PRIMARY KEY (doc_type, dept_code, year)
 );
 
 -- Idempotensi sync push & Idempotency-Key desktop — rules/sync-standards.md
@@ -362,8 +367,8 @@ CREATE TABLE products (
   allow_decimal_qty   boolean NOT NULL DEFAULT false,
   min_stock           numeric(18,4) NOT NULL DEFAULT 0,   -- satuan dasar
   max_stock           numeric(18,4),
-  avg_cost            numeric(18,4) NOT NULL DEFAULT 0,   -- HPP rata-rata bergerak per satuan dasar
-  last_purchase_cost  numeric(18,4),
+  -- HPP = FIFO (ADR-04): nilai ada di stock_cost_layers, bukan kolom di sini.
+  last_purchase_cost  numeric(18,4),                      -- harga beli terakhir per satuan dasar (lapisan opname+/penyesuaian+, HPP estimasi stok minus)
   attributes          jsonb NOT NULL DEFAULT '{}'::jsonb, -- atribut dinamis (FR-MD-05)
   is_active           boolean NOT NULL DEFAULT true,
   created_at          timestamptz NOT NULL DEFAULT now(),
@@ -465,8 +470,8 @@ CREATE TABLE stock_movements (
   warehouse_id    uuid NOT NULL REFERENCES warehouses(id),
   moved_at        timestamptz NOT NULL,               -- waktu bisnis dokumen
   qty             numeric(18,4) NOT NULL CHECK (qty <> 0),   -- + masuk, − keluar (satuan dasar)
-  unit_cost       numeric(18,4) NOT NULL,             -- HPP per satuan dasar saat mutasi
-  avg_cost_after  numeric(18,4) NOT NULL,             -- products.avg_cost setelah mutasi (audit HPP)
+  unit_cost       numeric(18,4) NOT NULL,             -- HPP per satuan dasar: masuk = harga lapisan baru; keluar = rata-rata tertimbang lapisan FIFO yang terpakai
+  cost_estimated  boolean NOT NULL DEFAULT false,     -- true bila sebagian keluar tanpa lapisan (stok minus) → harga beli terakhir
   source_type     text NOT NULL CHECK (source_type IN (
                     'OPENING','SALE','SALE_PICKUP','SALE_PICKUP_CANCEL','SALE_VOID','SALE_RETURN',
                     'PURCHASE_RECEIPT','PURCHASE_RETURN',
@@ -482,6 +487,42 @@ CREATE INDEX stock_movements_card_idx ON stock_movements (product_id, warehouse_
 CREATE INDEX stock_movements_source_idx ON stock_movements (source_type, source_id);
 CREATE INDEX stock_movements_warehouse_idx ON stock_movements (warehouse_id);
 CREATE INDEX stock_movements_created_by_idx ON stock_movements (created_by);
+
+-- Lapisan HPP FIFO (ADR-04, PRD §6.6). Satu baris per barang masuk berbiaya.
+-- qty_remaining dikurangi oleh pemakaian (tertua dulu); hanya stockService yang mengubahnya.
+CREATE TABLE stock_cost_layers (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id       uuid NOT NULL REFERENCES products(id),
+  warehouse_id     uuid NOT NULL REFERENCES warehouses(id),
+  received_at      timestamptz NOT NULL,              -- urutan FIFO (pembalikan memakai tanggal lapisan asal)
+  qty_in           numeric(18,4) NOT NULL CHECK (qty_in > 0),        -- satuan dasar
+  qty_remaining    numeric(18,4) NOT NULL CHECK (qty_remaining >= 0 AND qty_remaining <= qty_in),
+  unit_cost        numeric(18,4) NOT NULL CHECK (unit_cost >= 0),
+  source_movement_id uuid NOT NULL REFERENCES stock_movements(id),   -- mutasi masuk yang membuat lapisan
+  source_type      text NOT NULL,                     -- salinan stock_movements.source_type (PURCHASE_RECEIPT, OPENING, ...)
+  source_line_id   uuid,                              -- mis. goods_receipt_items.id → retur beli memakai lapisan asalnya dulu
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX stock_cost_layers_fifo_idx ON stock_cost_layers (product_id, warehouse_id, received_at, id)
+  WHERE qty_remaining > 0;
+CREATE INDEX stock_cost_layers_source_movement_idx ON stock_cost_layers (source_movement_id);
+CREATE INDEX stock_cost_layers_source_line_idx ON stock_cost_layers (source_line_id);
+CREATE INDEX stock_cost_layers_warehouse_idx ON stock_cost_layers (warehouse_id);
+
+-- Pemakaian lapisan oleh mutasi keluar (append-only). layer_id NULL = kekurangan tanpa lapisan (stok minus, HPP estimasi).
+CREATE TABLE stock_layer_consumptions (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  movement_id   uuid NOT NULL REFERENCES stock_movements(id),
+  layer_id      uuid REFERENCES stock_cost_layers(id),
+  qty           numeric(18,4) NOT NULL CHECK (qty > 0),   -- satuan dasar
+  unit_cost     numeric(18,4) NOT NULL,
+  is_estimated  boolean NOT NULL DEFAULT false,
+  created_at    timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CHECK (layer_id IS NOT NULL OR is_estimated)
+);
+CREATE INDEX stock_layer_consumptions_movement_idx ON stock_layer_consumptions (movement_id);
+CREATE INDEX stock_layer_consumptions_layer_idx ON stock_layer_consumptions (layer_id);
 
 CREATE TABLE stock_opnames (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -748,7 +789,7 @@ CREATE INDEX sale_payments_method_idx ON sale_payments (payment_method_id);
 -- Riwayat pengambilan append-only: koreksi = pembatalan (status CANCELLED + mutasi balik), tidak pernah diedit.
 CREATE TABLE sale_pickups (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  number         text NOT NULL UNIQUE,                 -- AB/K01/2610/00001 (Ambil Barang)
+  number         text NOT NULL UNIQUE,                 -- 0001/AB/UTM/1026 (Ambil Barang)
   customer_id    uuid NOT NULL REFERENCES customers(id),
   warehouse_id   uuid NOT NULL REFERENCES warehouses(id),
   status         text NOT NULL DEFAULT 'POSTED' CHECK (status IN ('POSTED','CANCELLED')),
@@ -784,7 +825,7 @@ CREATE TABLE sale_pickup_items (
   sale_item_id   uuid NOT NULL REFERENCES sale_items(id),
   qty            numeric(18,4) NOT NULL CHECK (qty > 0),   -- satuan baris nota (≤ sisa belum diambil)
   base_qty       numeric(18,4) NOT NULL CHECK (base_qty > 0),
-  unit_cost      numeric(18,4) NOT NULL,                   -- HPP per satuan dasar saat barang keluar
+  unit_cost      numeric(18,4) NOT NULL,                   -- HPP FIFO per satuan dasar saat barang keluar
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -984,7 +1025,7 @@ CREATE TABLE purchase_return_items (
   base_qty            numeric(18,4) NOT NULL CHECK (base_qty > 0),
   unit_price          numeric(18,2) NOT NULL,       -- harga beli (untuk potong hutang)
   line_total          numeric(18,2) NOT NULL,
-  unit_cost           numeric(18,4) NOT NULL,       -- avg_cost saat keluar (PRD §6.6)
+  unit_cost           numeric(18,4) NOT NULL,       -- HPP FIFO saat keluar (lapisan penerimaan asal dulu — PRD §6.6)
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
@@ -1156,6 +1197,9 @@ CREATE TRIGGER cash_transactions_append_only
   BEFORE UPDATE OR DELETE ON cash_transactions FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
 CREATE TRIGGER audit_logs_append_only
   BEFORE UPDATE OR DELETE ON audit_logs FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+CREATE TRIGGER stock_layer_consumptions_append_only
+  BEFORE UPDATE OR DELETE ON stock_layer_consumptions FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+-- stock_cost_layers TIDAK append-only: qty_remaining berkurang saat dipakai (hanya oleh stockService).
 
 -- =============================================================================
 -- 9. DATA AWAL (seed sistem — data toko diisi wizard first-run / importer iPOS)

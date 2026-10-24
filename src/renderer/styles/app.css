@@ -1,0 +1,89 @@
+/* Tailwind v4, CSS-first — no tailwind.config.js (design-standards §1). */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/inter';
+
+/* Mandiri Tani brand palette — token names are the contract. */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-tani-green: #2e7d32;
+  --color-tani-green-dark: #1b5e20;
+  --color-tani-green-light: #e8f5e9;
+  --color-tani-soil: #6d4c41;
+  --color-tani-harvest: #f9a825;
+  --color-tani-cream: #faf8f3;
+  --color-tani-border: #e3ded3;
+  --color-tani-muted: #5f5f5f;
+
+  --color-success: #2e7d32;
+  --color-warning: #f9a825;
+  --color-error: #c62828;
+  --color-info: #1565c0;
+  /* Text-on-white variants with ≥ 4.5:1 contrast. */
+  --color-success-ink: #1b5e20;
+  --color-warning-ink: #7a4f00;
+  --color-error-ink: #b71c1c;
+  --color-info-ink: #0d47a1;
+}
+
+/* shadcn/ui semantic tokens, mapped to the brand. */
+:root {
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #1c1c1c;
+  --card: #ffffff;
+  --card-foreground: #1c1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1c;
+  --primary: #2e7d32;
+  --primary-foreground: #ffffff;
+  --secondary: #f1efe9;
+  --secondary-foreground: #1c1c1c;
+  --muted: #f1efe9;
+  --muted-foreground: #5f5f5f;
+  --accent: #e8f5e9;
+  --accent-foreground: #1b5e20;
+  --destructive: #c62828;
+  --border: #e3ded3;
+  --input: #d6d0c4;
+  --ring: #2e7d32;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    /* Readable for cashiers: 16px body text minimum (design-standards §0). */
+    font-size: 16px;
+  }
+  body {
+    @apply bg-tani-cream text-foreground font-sans antialiased;
+  }
+}

@@ -118,7 +118,7 @@ Aturan klien:
 - Harga pada dokumen sinkron = harga yang dilihat perangkat (snapshot);
   server tidak me-resolve ulang, tapi menandai bila berbeda dari harga hub
   saat ini (audit).
-- Nomor dokumen dibuat perangkat (`KSR/T01/2610/00007`); bentrok `UNIQUE`
+- (Mode Terminal, v1.x) Nomor dokumen dibuat perangkat dengan kode gudang/dept sendiri (mis. `0000007/KSR/UTM2/1026`); bentrok `UNIQUE`
   → `REJECTED` dengan kode `DOC_NUMBER_CONFLICT` (indikasi counter
   perangkat rusak — pairing ulang menginisialisasi counter dari server).
 

@@ -47,7 +47,8 @@ Mode Persiapan).
 - [ ] Owner mencocokkan laporan rekonsiliasi dengan laporan iPOS (stok per item, saldo piutang per pelanggan, daftar nota jatuh tempo).
 - [ ] Catat waktu yang dibutuhkan setiap langkah → jadwal malam go-live.
 - [ ] Latihan kasir & admin memakai data hasil gladi (transaksi uji boleh, akan dihapus).
-- [ ] Kumpulkan: daftar **hutang supplier** sebenarnya (DQ-11), daftar **barang belum diambil** (DAFTAR PUPUK), daftar pengguna & PIN (Q-14), keputusan HPP (Q-10).
+- [ ] Owner menandai di layar impor **faktur beli kredit mana yang belum lunas** (dari 49 faktur iPOS — FR-MIG-05); di gladi ini juga uji coba centangnya.
+- [ ] Kumpulkan: daftar **barang belum diambil** (DAFTAR PUPUK), nama akun **Kasir** & **Owner** beserta PIN (D-12). (Sudah diputuskan: HPP FIFO, histori diimpor.)
 
 ## 5. Malam go-live (setelah toko tutup)
 
@@ -55,12 +56,12 @@ Mode Persiapan).
 |---|---|---|---|
 | 1 | Hentikan transaksi di iPOS; buat backup `.i5bu` terakhir; salin ke flashdisk | Owner/Admin | File ada di 2 tempat |
 | 2 | Di aplikasi baru (masih Mode Persiapan): **Reset data persiapan** | Owner | Data uji gladi hilang |
-| 3 | Impor `purpose = GO_LIVE`: master → stok awal → piutang terbuka → (histori, bila Q-13 = ya) | Owner | Batch `COMMITTED` |
-| 4 | Laporan rekonsiliasi: jumlah item/pelanggan, qty & nilai stok, total piutang per pelanggan = iPOS | Owner | Selisih 0, dicetak & ditandatangani |
-| 5 | Input **saldo awal hutang supplier** per faktur (FR-MIG-05) | Owner | Total = catatan owner |
-| 6 | Input **saldo awal barang belum diambil** (`plan/sprint-7-pengambilan-barang.md` §8) | Admin | Daftar = DAFTAR PUPUK |
-| 7 | Opname cepat pupuk utama (fisik vs sistem) + penyesuaian bila perlu | Admin | Selisih dijelaskan |
-| 8 | Buat user per orang, set printer, uji 1 transaksi KSR + 1 JL + 1 pengambilan, lalu **void** | Owner | Struk & bukti tercetak |
+| 3 | Impor `purpose = GO_LIVE`: master → stok awal (lapisan FIFO iPOS) → piutang terbuka → **histori 2 tahun** | Owner | Batch `COMMITTED` |
+| 4 | Laporan rekonsiliasi: jumlah item/pelanggan, qty & **nilai FIFO** stok, total piutang per pelanggan = iPOS | Owner | Selisih 0, dicetak & ditandatangani |
+| 5 | **Hutang supplier**: centang faktur kredit iPOS yang belum lunas (+ isi sisa bila dicicil), tambah hutang di luar iPOS bila ada (FR-MIG-05) | Owner | Total = catatan owner |
+| 6 | Input **saldo awal barang belum diambil** (`plan/sprint-7-pengambilan-barang.md` §8) | Kasir/Owner | Daftar = DAFTAR PUPUK |
+| 7 | Opname cepat pupuk utama (fisik vs sistem) + penyesuaian bila perlu | Owner | Selisih dijelaskan |
+| 8 | Buat akun **Kasir** & **Owner** (PIN masing-masing), set printer USB, uji 1 transaksi KSR + 1 JL + 1 pengambilan + 1 otorisasi PIN Owner, lalu **void** | Owner | Nota & bukti AB tercetak rapi di LX-310 (posisi kertas pas) |
 | 9 | **Nyatakan Go-Live** (ketik "GO LIVE") → `go_live_at` terisi, backup otomatis `go-live-<ts>.dump` | Owner | Banner persiapan hilang |
 
 ## 6. Setelah go-live

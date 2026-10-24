@@ -60,17 +60,17 @@ Simpan (1 transaksi DB):
    ├─ sisa                   → stockService.reserve (dipesan +)
    └─ fulfillment_status = PENDING (tidak ada yang dibawa) / PARTIAL / TAKEN
 Cetak struk/faktur dengan blok:
-   "BARANG BELUM DIAMBIL: Urea 20 ZAK — tunjukkan nota ini saat mengambil" + QR no. nota
+   "BARANG BELUM DIAMBIL: Urea 20 ZAK — tunjukkan nota ini saat mengambil" + no. nota lebar ganda (LX-310 tanpa QR)
 ```
 
 ### 3.2 Saat pelanggan datang mengambil
 
 ```
-Menu Pengambilan Barang (F11) → cari pelanggan / scan QR nota / ketik no. nota
+Menu Pengambilan Barang (F11) → cari pelanggan / ketik no. nota
 → tampil SEMUA sisa barang pelanggan itu dari semua nota (tanggal nota, barang, sisa, umur hari)
 → isi qty diambil per baris (tombol "Ambil semua"; tidak boleh > sisa)
 → penerima (nama wajib — bisa diwakilkan, HP), kendaraan/no. polisi, metode: diambil / diantar (+ tujuan), catatan
-→ Simpan: nomor AB/K01/2610/00001
+→ Simpan: nomor 0001/AB/UTM/1026
    ├─ stockService.apply: SALE_PICKUP (fisik −, dipesan −) dengan HPP saat ini
    ├─ sale_items.picked_up_qty += qty; status nota → PARTIAL / COMPLETE
    └─ audit_logs "pickup.create"
@@ -81,7 +81,7 @@ Menu Pengambilan Barang (F11) → cari pelanggan / scan QR nota / ketik no. nota
 
 | Kasus | Penanganan |
 |---|---|
-| Salah input pengambilan | **Batalkan pengambilan** (Supervisor/Owner, alasan wajib): status `CANCELLED`, mutasi `SALE_PICKUP_CANCEL` (fisik +, dipesan +), sisa nota kembali seperti sebelumnya |
+| Salah input pengambilan | **Batalkan pengambilan** (Owner, atau kasir dengan PIN Owner; alasan wajib): status `CANCELLED`, mutasi `SALE_PICKUP_CANCEL` (fisik +, dipesan +, lapisan FIFO dikembalikan dengan harga & tanggal asal), sisa nota kembali seperti sebelumnya |
 | Pelanggan tidak jadi mengambil sisa | **Retur sisa belum diambil** (`sales.return`): `cancelled_qty` +, reservasi dilepas, **tanpa** mutasi fisik (barang tidak pernah keluar), uang dikembalikan tunai / potong piutang |
 | Nota salah total | **Void** hanya bila belum ada pengambilan POSTED; void melepas reservasi dan membalik barang yang dibawa saat bayar |
 
@@ -90,26 +90,31 @@ Menu Pengambilan Barang (F11) → cari pelanggan / scan QR nota / ketik no. nota
 - Dashboard: jumlah nota & nilai barang belum diambil; **lewat janji ambil**;
   **umur > N hari** (setting `pickup.aging_warn_days`, default 30).
 - Daftar per pelanggan bisa dicetak / dikirim (pengganti sheet DAFTAR PUPUK).
-- Info di layar kasir saat memilih pelanggan: "Pak Budi masih punya 5 ZAK Urea belum diambil (nota JL/K01/2610/00012)".
+- Info di layar kasir saat memilih pelanggan: "Pak Budi masih punya 5 ZAK Urea belum diambil (nota 0001790/JL/UTM/1026)".
 
 ## 4. HPP & laporan laba
 
 - **Omzet** diakui pada tanggal nota (sama seperti iPOS — uang/piutang terjadi saat itu).
-- **HPP** dicatat saat barang keluar gudang (`unit_cost` di `sale_pickup_items`
-  dan di mutasi). `sale_items.cost_per_base` = rata-rata tertimbang dari bagian
-  yang sudah keluar.
-- Selama masih ada sisa, laporan laba memakai **HPP saat ini** untuk sisa itu
-  dan menandai nota sebagai *"HPP estimasi — barang belum diambil penuh"*.
-  Setelah diambil penuh, angka menjadi final.
+- **HPP (FIFO, seperti iPOS)** ditetapkan saat barang keluar gudang: pengambilan
+  memakai **lapisan FIFO tertua pada hari diambil** (`unit_cost` di
+  `sale_pickup_items` dan di mutasi). `sale_items.cost_per_base` = rata-rata
+  tertimbang dari bagian yang sudah keluar.
+- Selama masih ada sisa, laporan laba memakai **HPP FIFO perkiraan** (lapisan
+  tertua yang tersedia saat laporan dibuat) untuk sisa itu dan menandai nota
+  sebagai *"HPP estimasi — barang belum diambil penuh"*. Setelah diambil penuh,
+  angka menjadi final.
+- Catatan: barang yang dipesan **tidak** mengunci lapisan tertentu. Bila
+  pembeli lain mengambil barang lebih dulu, lapisan tertua dipakai mereka —
+  ini perilaku FIFO murni dan sama dengan arus fisik gudang.
 
-## 5. Hak akses (tambahan PRD §4.2)
+## 5. Hak akses (tambahan PRD §4.2 — v1: KASIR & OWNER)
 
-| Permission | KASIR | SUPERVISOR | OWNER |
-|---|:-:|:-:|:-:|
-| `sales.pending_pickup` (jual dengan "diambil nanti") | ✔ | ✔ | ✔ |
-| `pickups.create` (input pengambilan) | ✔ | ✔ | ✔ |
-| `pickups.cancel` (batalkan pengambilan) | ⛔ (otorisasi) | ✔ | ✔ |
-| `pickups.read` (riwayat & daftar belum diambil) | ✔ | ✔ | ✔ |
+| Permission | KASIR | OWNER |
+|---|:-:|:-:|
+| `sales.pending_pickup` (jual dengan "diambil nanti") | ✔ | ✔ |
+| `pickups.create` (input pengambilan) | ✔ | ✔ |
+| `pickups.cancel` (batalkan pengambilan) | ⛔ (PIN Owner) | ✔ |
+| `pickups.read` (riwayat & daftar belum diambil) | ✔ | ✔ |
 
 ## 6. Skema (sudah di `mandiri_tani_schema.sql`)
 
@@ -144,7 +149,7 @@ untuk nota COMPLETED per produk × gudang (bundle: per komponen).
 | Layar | Isi |
 |---|---|
 | Dialog Bayar | Centang "Barang diambil nanti", qty dibawa sekarang per baris, rencana tanggal |
-| **Pengambilan Barang** (F11) | Cari pelanggan/nota/QR → sisa per baris → qty diambil → penerima → simpan & cetak |
+| **Pengambilan Barang** (F11) | Cari pelanggan / no. nota → sisa per baris → qty diambil → penerima → simpan & cetak |
 | Detail Nota | Tab **Riwayat Pengambilan** (no. AB, tanggal, qty, penerima, petugas, status) |
 | Detail Pelanggan | Kartu "Barang belum diambil" + riwayat pengambilan |
 | Stok / Kartu Stok | Kolom Fisik · Dipesan · Tersedia; klik Dipesan → daftar nota |
@@ -169,7 +174,7 @@ sehingga stok hasil impor iPOS **lebih kecil** dari isi gudang. Langkah
 
 | Kasus | Aturan |
 |---|---|
-| Stok tersedia kurang saat menjual | Blok seperti FR-INV-10 (otorisasi Supervisor bila dipaksa) |
+| Stok tersedia kurang saat menjual | Blok seperti FR-INV-10 (PIN Owner bila dipaksa) |
 | Stok **fisik** kurang saat pengambilan (selisih opname/hilang) | Blok dengan pesan "Stok fisik X tinggal N — lakukan penyesuaian/opname dulu"; tidak boleh fisik minus lewat pengambilan |
 | Pengambilan dalam satuan lain (beli 2 ZAK, ambil 50 KG) | v1: pengambilan dalam satuan baris nota; pecahan hanya bila produk `allow_decimal_qty`. Ambil per KG = *Could* |
 | Diwakilkan orang lain | `receiver_name` wajib diisi nama pengambil sebenarnya; tercetak di bukti |
@@ -190,7 +195,7 @@ sehingga stok hasil impor iPOS **lebih kecil** dari isi gudang. Langkah
 
 **S6–S7 — Penjualan & Pengambilan**
 - [ ] Dialog Bayar: "Barang diambil nanti" + qty dibawa sekarang + rencana tanggal (Kasir & Faktur), pelanggan wajib bernama
-- [ ] Struk/faktur mencetak blok barang belum diambil + QR no. nota
+- [ ] Nota/faktur (ESC/P LX-310) mencetak blok barang belum diambil + no. nota lebar ganda; bukti AB ½ halaman continuous form
 - [ ] Layar **Pengambilan Barang** (F11), `POST /pickups`, nomor `AB`, cetak bukti 2 rangkap
 - [ ] Riwayat pengambilan di Detail Nota & Detail Pelanggan; info sisa di layar kasir saat pilih pelanggan
 - [ ] Batalkan pengambilan (otorisasi) + mutasi balik; void nota ditolak bila ada pengambilan POSTED

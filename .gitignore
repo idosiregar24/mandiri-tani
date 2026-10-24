@@ -15,8 +15,10 @@ release/
 coverage/
 *.tsbuildinfo
 
-# --- Binaries PostgreSQL portable (diunduh scripts/fetch-postgres.mjs) ---
-resources/postgres/
+# --- Binaries PostgreSQL portable (diunduh scripts/fetch-postgres.mjs); VERSION tetap di-commit ---
+resources/postgres/bin/
+resources/postgres/lib/
+resources/postgres/share/
 
 # --- Rahasia & environment ---
 .env

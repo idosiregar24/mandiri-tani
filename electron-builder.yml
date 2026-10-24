@@ -1,0 +1,41 @@
+# Windows installer (NSIS) — desktop-runtime-standards §6.
+appId: id.mandiritani.pos
+productName: Mandiri Tani POS
+copyright: Copyright © 2026 Mandiri Tani
+directories:
+  buildResources: build
+  output: release
+# Reuse the Electron already in node_modules (installed by npm or `npm run fetch:electron`)
+# instead of downloading it again — the store/dev network is slow.
+electronDist: node_modules/electron/dist
+files:
+  - out/**/*
+  - package.json
+# Portable PostgreSQL (bin/lib/share only) and SQL migrations ship next to app.asar.
+extraResources:
+  - from: resources/postgres/bin
+    to: postgres/bin
+  - from: resources/postgres/lib
+    to: postgres/lib
+  - from: resources/postgres/share
+    to: postgres/share
+  - from: db/migrations
+    to: migrations
+    filter:
+      - '*.sql'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: MandiriTaniPOS
+nsis:
+  oneClick: false
+  # Per-machine: needs admin once, so the installer can add the LAN firewall rule.
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  shortcutName: Mandiri Tani POS
+  artifactName: MandiriTaniPOS-Setup-${version}.${ext}
+  # Store data lives in %APPDATA%\pos-desktop and must survive uninstall/upgrade.
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh

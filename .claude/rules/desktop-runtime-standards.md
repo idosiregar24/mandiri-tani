@@ -15,7 +15,7 @@ src/main/
 ├── secrets.ts          # safeStorage encrypt/decrypt secrets.bin
 ├── window.ts           # BrowserWindow (opsi keamanan — security-standards §5)
 ├── ipc/                # handler ipcMain per area: printer.ts, lifecycle.ts, app.ts
-└── hardware/           # escpos/ (encoder + receipt builder), transports/ (network, serial, windows-raw)
+└── hardware/           # documents/ (DocumentBuilder), encoders/ (escp = LX-310, escpos), transports/ (windows-raw, network, serial)
 ```
 
 - Main process **memiliki** lifecycle PostgreSQL: tidak ada kode lain yang
@@ -61,16 +61,35 @@ src/main/
 - IPC hanya untuk hardware, lifecycle, dan info aplikasi. **Data bisnis
   lewat REST API** (ADR-01) — jangan menambah `pos:sales:create`.
 
-## 5. Printer ESC/POS & laci
+## 5. Printer (Epson LX-310 dot matrix) & laci
 
-- Alur: `ReceiptBuilder` (data nota → model baris) → `EscPosEncoder`
-  (→ `Uint8Array`) → `PrinterTransport.send(bytes)`.
-- Transport: `network` (TCP 9100, modul `net`), `serial` (`serialport`),
-  `windows-raw` (job RAW ke spooler Windows, tanpa dialog). Satu interface
-  `PrinterTransport { send(bytes, { timeoutMs }): Promise<void> }`.
-- Lebar 32 kolom (58 mm) / 48 kolom (80 mm); wrap nama barang; angka rata
-  kanan; transliterasi non-ASCII. Buka laci `1B 70 00 19 FA` (pin 2) /
-  `1B 70 01 19 FA` (pin 5) sesuai setting.
+Toko punya **dua printer** (PRD §8.1), dipilih per **peran** dokumen:
+`faktur` = **Epson LX-310** (9-pin dot matrix, **ESC/P**, continuous form,
+tanpa pemotong/laci/QR) dan `struk` = **printer thermal** (**ESC/POS**,
+kertas gulung, ±48 huruf). Jangan pernah mengirim byte satu bahasa ke
+printer peran lain; LX-310 tidak boleh dipilih otomatis untuk struk
+(`pickPrinter` di `@shared/printing`). Encoder: `hardware/escp.ts`,
+`hardware/escpos.ts`; teks sempit dibungkus dengan `wrap()`.
+
+- Alur: `DocumentBuilder` (data nota/faktur/bukti AB → model **halaman**
+  berisi baris teks berlebar tetap) → `PrinterEncoder` (`escp` default,
+  `escpos` cadangan; dipilih dari `settings.printer.language`) →
+  `PrinterTransport.send(bytes)`.
+- `DocumentBuilder` tidak tahu bahasa printer; encoder tidak tahu isi
+  dokumen. Satu model gaya kecil saja: tebal, lebar ganda, rata
+  kiri/kanan/tengah, garis pemisah, ganti halaman.
+- Transport v1: **`windows-raw`** — job datatype `RAW` ke antrean printer
+  yang dibuat driver Epson (`LX-310_Drv_Ver1_1497909`), tanpa dialog.
+  `network` (TCP 9100) & `serial` cadangan. Satu interface
+  `PrinterTransport { send(bytes, { timeoutMs }): Promise<void> }`,
+  timeout 10 dtk.
+- Kertas: kolom 80 (10 cpi) / 96 (12 cpi) / 137 (condensed); panjang
+  halaman dari setting (`ESC C`); nota panjang dipecah per halaman dengan
+  header ulang & "Hal n/m"; akhiri dengan `FF` (maju ke perforasi). Wrap
+  nama barang; angka rata kanan; transliterasi non-ASCII ke PC437.
+- Laci: `settings.drawer.mode` = `none` (default, manual) / `serial` /
+  `printer` (ESC/POS `1B 70 00 19 FA`, hanya thermal). `window.pos.openDrawer()`
+  mengembalikan `UNSUPPORTED` bila `none`.
 - Cetak **setelah** API mengembalikan sukses (transaksi sudah COMMIT).
   Gagal cetak → simpan job di antrean memori + kembalikan error terstruktur
   ke renderer; jangan pernah memicu rollback/void.
@@ -93,9 +112,16 @@ src/main/
   profil Private saat install; hapus saat uninstall. Uninstall **tidak**
   menghapus `%APPDATA%/pos-desktop` (data toko) — tampilkan pesan bahwa data
   tetap tersimpan.
-- `resources/postgres/` di-`.gitignore`; diunduh oleh
-  `scripts/fetch-postgres.mjs` (versi dari `resources/postgres/VERSION`,
-  verifikasi checksum SHA-256 yang dicatat di repo).
+- `resources/postgres/{bin,lib,share}` di-`.gitignore` (`VERSION` di-commit);
+  diunduh oleh `npm run fetch:postgres` (versi dari `resources/postgres/VERSION`,
+  verifikasi SHA-256 di `scripts/postgres.sha256` — dicatat saat unduhan
+  pertama, wajib cocok sesudahnya).
+- Jaringan dev & toko lambat dan CDN membatasi per koneksi: semua unduhan
+  besar lewat `scripts/lib/parallel-download.mjs` (range paralel, retry per
+  potongan, bisa dilanjutkan). Bila binary Electron gagal terunduh saat
+  `npm install`, jalankan `npm run fetch:electron` (verifikasi SHA-256 dari
+  `checksums.json` paket electron). `electron-builder.yml` memakai
+  `electronDist: node_modules/electron/dist` agar tidak mengunduh ulang.
 - Versi aplikasi = `package.json` `version` (semver); tampil di struk
   diagnostik, health endpoint, dan halaman Tentang.
 

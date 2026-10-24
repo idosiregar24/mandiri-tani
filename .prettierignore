@@ -1,0 +1,8 @@
+out
+dist
+release
+resources
+.cache
+.claude
+db/migrations
+package-lock.json
