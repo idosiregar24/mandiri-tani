@@ -1,0 +1,38 @@
+# --- Data nyata toko (nama/HP pelanggan, backup database iPOS) — JANGAN PERNAH di-commit ---
+.claude/file/
+*.i5bu
+*.dump
+*.backup
+
+# --- Pengaturan Claude Code lokal (per mesin) ---
+.claude/settings.local.json
+
+# --- Dependensi & hasil build ---
+node_modules/
+out/
+dist/
+release/
+coverage/
+*.tsbuildinfo
+
+# --- Binaries PostgreSQL portable (diunduh scripts/fetch-postgres.mjs) ---
+resources/postgres/
+
+# --- Rahasia & environment ---
+.env
+.env.*
+!.env.example
+
+# --- Log & sementara ---
+*.log
+logs/
+tmp/
+.cache/
+
+# --- OS & editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
