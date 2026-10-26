@@ -1,5 +1,5 @@
 // "Data Lain" (Sprint 3 D5): the small masters, one tab each.
-import { Tags } from 'lucide-react';
+
 import { useState } from 'react';
 import {
   BankAccountInput,
@@ -281,11 +281,7 @@ export function MasterDataPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Data Lain"
-        description="Kategori, satuan, grup pelanggan, gudang, rekening, dan merek."
-        icon={Tags}
-      />
+      <PageHeader title="Data Lain" description="Kategori, satuan, grup pelanggan, gudang, rekening, dan merek." />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="h-auto flex-wrap">
           {TABS.map((t) => (

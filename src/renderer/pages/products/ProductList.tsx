@@ -1,62 +1,29 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import { Boxes, Plus, Search } from 'lucide-react';
-import { useState } from 'react';
+import { Boxes, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import type { ProductListItem } from '@shared/schemas/master';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Notice } from '@/components/shared/Notice';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { Badge } from '@/components/ui/badge';
+import { RowActions } from '@/components/shared/RowActions';
+import { SearchBox } from '@/components/shared/SearchBox';
+import { SegmentedControl } from '@/components/shared/SegmentedControl';
+import { ActivePill } from '@/components/shared/StatusPill';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCategories } from '@/features/masters/api';
-import { useProducts } from '@/features/products/api';
+import { useProducts, useRemoveProduct } from '@/features/products/api';
 import { formatNumber, formatRupiah } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/hooks';
 import { useCan } from '@/lib/session';
 
-const columns: ColumnDef<ProductListItem, unknown>[] = [
-  { header: 'Kode', accessorKey: 'sku', meta: { className: 'w-36 font-mono text-sm' } },
-  {
-    header: 'Nama barang',
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {row.original.name}
-        {!row.original.isActive && (
-          <Badge variant="outline" className="ml-2 text-sm">
-            Nonaktif
-          </Badge>
-        )}
-      </span>
-    ),
-  },
-  { header: 'Kategori', cell: ({ row }) => row.original.categoryName ?? '—', meta: { className: 'w-44' } },
-  {
-    header: 'Satuan & harga jual',
-    cell: ({ row }) => (
-      <ul className="space-y-0.5">
-        {row.original.units.map((u) => (
-          <li key={u.unitCode} className="flex justify-between gap-6 tabular-nums">
-            <span>
-              {u.unitCode}
-              {u.conversionQty !== '1' && (
-                <span className="text-muted-foreground">
-                  {' '}
-                  = {formatNumber(u.conversionQty)} {row.original.baseUnitCode}
-                </span>
-              )}
-            </span>
-            <span>{formatRupiah(u.price)}</span>
-          </li>
-        ))}
-      </ul>
-    ),
-    meta: { className: 'w-80' },
-  },
-];
+const STATUS = [
+  { value: 'active', label: 'Aktif' },
+  { value: 'all', label: 'Semua' },
+] as const;
 
 export function ProductList() {
   const navigate = useNavigate();
@@ -64,23 +31,86 @@ export function ProductList() {
   const canWrite = useCan('products.write');
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState('all');
-  const [includeInactive, setIncludeInactive] = useState(false);
+  const [status, setStatus] = useState<'active' | 'all'>('active');
   const [page, setPage] = useState(1);
+  const [deleting, setDeleting] = useState<ProductListItem | null>(null);
+  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(
+    saved ? { tone: 'success', text: saved } : null,
+  );
   const search = useDebouncedValue(q.trim());
   const categories = useCategories();
+  const remove = useRemoveProduct();
   const products = useProducts({
     q: search || undefined,
     categoryId: categoryId === 'all' ? undefined : categoryId,
-    includeInactive,
+    includeInactive: status === 'all',
     page,
   });
 
+  const columns = useMemo<ColumnDef<ProductListItem, unknown>[]>(
+    () => [
+      {
+        header: 'Barang',
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.name}</p>
+            <p className="text-muted-foreground font-mono text-sm">{row.original.sku}</p>
+          </div>
+        ),
+      },
+      { header: 'Kategori', cell: ({ row }) => row.original.categoryName ?? '—', meta: { className: 'w-44' } },
+      {
+        header: 'Satuan & harga jual',
+        cell: ({ row }) => (
+          <ul className="space-y-0.5">
+            {row.original.units.map((u) => (
+              <li key={u.unitCode} className="flex justify-between gap-6 tabular-nums">
+                <span>
+                  {u.unitCode}
+                  {u.conversionQty !== '1' && (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      = {formatNumber(u.conversionQty)} {row.original.baseUnitCode}
+                    </span>
+                  )}
+                </span>
+                <span>{formatRupiah(u.price)}</span>
+              </li>
+            ))}
+          </ul>
+        ),
+        meta: { className: 'w-80' },
+      },
+      {
+        header: 'Status',
+        cell: ({ row }) => <ActivePill active={row.original.isActive} />,
+        meta: { className: 'w-32' },
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) =>
+          canWrite && (
+            <RowActions
+              label={`Aksi untuk ${row.original.name}`}
+              actions={[
+                { label: 'Ubah', icon: Pencil, onSelect: () => void navigate(`/barang/${row.original.id}`) },
+                { label: 'Hapus barang', icon: Trash2, danger: true, onSelect: () => setDeleting(row.original) },
+              ]}
+            />
+          ),
+        meta: { className: 'w-16', align: 'right' },
+      },
+    ],
+    [canWrite, navigate],
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title="Barang"
+        count={products.data ? formatNumber(String(products.data.meta.total)) : undefined}
         description="Daftar barang dengan satuan dan harga jualnya."
-        icon={Boxes}
         actions={
           canWrite && (
             <Button asChild size="lg" className="h-11 text-base">
@@ -92,23 +122,18 @@ export function ProductList() {
         }
       />
 
-      {saved && <Notice tone="success">{saved}</Notice>}
+      {message && <Notice tone={message.tone}>{message.text}</Notice>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-full max-w-md">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 size-5 -translate-y-1/2" aria-hidden />
-          <Input
-            autoFocus
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Cari nama, kode, atau scan barcode…"
-            aria-label="Cari barang"
-            className="h-11 pl-10 text-base md:text-base"
-          />
-        </div>
+        <SegmentedControl
+          label="Status barang"
+          value={status}
+          options={STATUS}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
         <Select
           value={categoryId}
           onValueChange={(v) => {
@@ -130,17 +155,17 @@ export function ProductList() {
             ))}
           </SelectContent>
         </Select>
-        <label className="flex h-11 items-center gap-2 text-base">
-          <Checkbox
-            checked={includeInactive}
-            onCheckedChange={(v) => {
-              setIncludeInactive(v === true);
-              setPage(1);
-            }}
-            className="size-5"
-          />
-          Tampilkan yang nonaktif
-        </label>
+        <SearchBox
+          autoFocus
+          className="ml-auto"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Cari nama, kode, atau scan barcode…"
+          aria-label="Cari barang"
+        />
       </div>
 
       {products.isError && <Notice tone="error">{products.error.message}</Notice>}
@@ -180,6 +205,25 @@ export function ProductList() {
           />
         }
       />
+
+      {deleting && (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && setDeleting(null)}
+          tone="danger"
+          title={`Hapus "${deleting.name}"?`}
+          description="Barang tidak tampil lagi di daftar dan tidak bisa dijual. Riwayat transaksinya tetap tersimpan."
+          confirmLabel="Hapus barang"
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(deleting.id, {
+              onSuccess: () => setMessage({ tone: 'success', text: `Barang "${deleting.name}" dihapus.` }),
+              onError: (err) => setMessage({ tone: 'error', text: err.message }),
+              onSettled: () => setDeleting(null),
+            })
+          }
+        />
+      )}
     </div>
   );
 }

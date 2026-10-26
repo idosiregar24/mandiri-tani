@@ -72,11 +72,13 @@ describe('iPOS import — master scope', () => {
       sourceFile: 'contoh.i5bu',
     });
     expect(batch.sourceDumpAt).toBeTruthy();
-    for (const row of batch.reconciliation) expect(row.imported, row.label).toBe(row.ipos);
+    for (const row of batch.reconciliation) expect(row, row.label).toMatchObject({ ok: true, imported: row.ipos });
     expect(batch.reconciliation.find((r) => r.label === 'Pelanggan grup RAM_1')).toEqual({
       label: 'Pelanggan grup RAM_1',
-      ipos: 1,
-      imported: 1,
+      kind: 'count',
+      ipos: '1',
+      imported: '1',
+      ok: true,
     });
 
     const audit = await one<{ n: number }>(

@@ -12,7 +12,7 @@ di depan, deskripsi huruf kecil dipisah tanda hubung (contoh:
 sprint memakai nomor sprint tempat fitur itu **utamanya** dibangun, dan
 menyebut sprint lain di dalamnya.
 
-**Status saat ini (2026-10-26):** S1 selesai kecuali uji di Windows bersih (G2); S3 (master + impor iPOS) selesai, dikerjakan sebelum S2. Catatan lama (2026-10-24): Sudah ada:
+**Status saat ini (2026-10-26):** S1 selesai kecuali uji di Windows bersih (G2); S3 (master + impor iPOS) dan S4 (stok FIFO, penyesuaian, opname, impor stok awal) selesai — keduanya dikerjakan sebelum S2. Desain UI diganti ke gaya "modern simple" (design-standards §0). Catatan lama (2026-10-24): Sudah ada:
 dokumen `.claude` (PRD, skema, rules, skills, plan) dan **alat uji cetak
 LX-310** (`tools/uji-cetak/`, Sprint 0) yang menunggu diuji di printer asli.
 Sprint 1 siap dimulai paralel.
@@ -31,7 +31,7 @@ pengembangan sekarang vs impor saat go-live — mulai S3).
 | [S1](sprint-1-fondasi-shell-postgresql.md) | M0 Fondasi | Scaffold Electron + Vite + React, PostgreSQL portable + `PgManager`, migration runner, Express skeleton, boot screen, shutdown, kerangka installer | 🔶 Installer dibuild & build terpaket teruji (boot 1,3 dtk, crash/kill, tutup normal); **menunggu owner:** install di Windows bersih + HP (G2), logoff & sleep (F2) |
 | S2 | M0 Fondasi | Auth (password/PIN, sesi), user & role, permission, audit log, settings, first-run wizard, app shell, penomoran dokumen | — |
 | [S3](sprint-3-master-data-impor-ipos.md) | M1 Master & Inventori | Produk multi-satuan (KG/ZAK), harga, kategori/merek, pelanggan & grup, supplier, gudang, metode bayar per rekening; **importer iPOS lingkup Master** — dikerjakan **sebelum S2** (keputusan owner) | ✅ 31/31 item, 112 tes hijau; impor backup asli cocok 1:1 (416 barang, 1.238 pelanggan, 37 supplier). **Menunggu owner:** coba alur impor → reset → impor ulang di aplikasi |
-| S4 | M1 Master & Inventori | `stockService.apply` (ledger + lock + HPP), **impor stok awal iPOS**, kartu stok (buku & fisik), penyesuaian, opname (desktop), stok menipis, cek konsistensi | — |
+| [S4](sprint-4-stok-fifo-opname.md) | M1 Master & Inventori | `stockService.apply` (ledger + lock + HPP), **impor stok awal iPOS**, kartu stok (buku & fisik), penyesuaian, opname (desktop), stok menipis, cek konsistensi — dikerjakan **sebelum S2** | ✅ 27/27 item, 143 tes; stok awal backup asli = iPOS **Rp 1.793.173.974** (288 barang, 357 lapisan FIFO). **Menunggu owner:** coba penyesuaian & opname di aplikasi |
 | S5 | M2 POS Kasir | Layar kasir: cari/scan, keranjang, resolusi harga + ubah harga baris, ganti satuan, potongan nota nominal, shortcut, `useScanner` | — |
 | S6 | M2 POS Kasir | Shift, pembayaran tunai/transfer/QRIS, simpan transaksi, **cetak ESC/P ke Epson LX-310 (USB)**, cetak ulang, kas masuk/keluar → **transaksi KSR pertama end-to-end** | — |
 | S7 | M2 POS Kasir | **Faktur Penjualan (JL)**: kredit/sebagian kredit, ongkos angkut, harga terakhir pelanggan; **terjual-belum-diambil + Pengambilan Barang** ([rencana fitur](sprint-7-pengambilan-barang.md)); hold/resume, void, otorisasi PIN Owner | — |
@@ -102,6 +102,8 @@ apa, alasan) — lalu perbarui PRD/skema bila keputusannya permanen.
 | 2026-10-24 | Tidak ada laci uang (`drawer.mode = none`) | Jawaban owner Q-15 |
 | 2026-10-24 | **Dua printer per peran**: `faktur` = LX-310 (ESC/P) untuk JL & AB; `struk` = thermal (ESC/POS) untuk KSR — koreksi asumsi "KSR di LX-310" | Foto struk KSR iPOS dari owner |
 | 2026-10-24 | Desain UI **sederhana, mudah dipakai, mudah dibaca** (shadcn boleh) — design-standards §0 | Permintaan owner |
+| 2026-10-26 | Urutan sprint: **S3 → S4 sebelum S2**; sampai S2 akses lewat kunci akses lokal (S3-1), `created_by` dokumen boleh NULL (S3-2, S4-1), `numbering.ts` ditarik maju dari S2 (S4-2) | Keputusan owner ("sprint 3 dulu", "langsung ke sprint 4") |
+| 2026-10-26 | Gaya UI **"modern simple"**: kanvas netral, panel putih, header tabel netral, pill status bertitik, filter segmented, menu ⋯ per baris, kartu angka; hijau hanya untuk aksi utama/status | 5 referensi desain dari owner — design-standards §0 |
 | 2026-10-24 | Faktur dicetak **meniru format faktur iPOS** (½ halaman 9,5"×5,5", 96 kolom, logo, Terbilang, kotak Penerima, ruang stempel); hanya metode bayar yang dipakai yang dicetak | Foto faktur dari owner (`.claude/file/contoh-faktur-ipos-LX310.jpg`, lokal) |
 
 ## Pertanyaan terbuka

@@ -13,7 +13,8 @@ import { MoneyInput } from '@/components/shared/MoneyInput';
 import { Notice } from '@/components/shared/Notice';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { SearchBox } from '@/components/shared/SearchBox';
-import { Badge } from '@/components/ui/badge';
+import { SegmentedControl } from '@/components/shared/SegmentedControl';
+import { ActivePill, StatusPill } from '@/components/shared/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -29,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useCustomerGroups } from '@/features/masters/api';
 import { usePartners, useRemovePartner, useSavePartner } from '@/features/partners/api';
-import { formatRupiah } from '@/lib/format';
+import { formatNumber, formatRupiah } from '@/lib/format';
 import { applyServerErrors } from '@/lib/form-errors';
 import { useDebouncedValue } from '@/lib/hooks';
 import { useCan } from '@/lib/session';
@@ -39,32 +40,37 @@ type FormOut = z.output<typeof CustomerInput>;
 const inputClass = 'h-11 text-base md:text-base';
 const ALL = 'all';
 
+const STATUS = [
+  { value: 'active', label: 'Aktif' },
+  { value: 'all', label: 'Semua' },
+] as const;
+
 const columns: ColumnDef<Customer, unknown>[] = [
-  { header: 'Kode', accessorKey: 'code', meta: { className: 'w-28 font-mono text-sm' } },
   {
-    header: 'Nama',
+    header: 'Pelanggan',
     cell: ({ row }) => (
-      <span className="font-medium">
-        {row.original.name}
-        {row.original.isWalkIn && (
-          <Badge variant="secondary" className="ml-2 text-sm">
-            Bawaan
-          </Badge>
-        )}
-        {!row.original.isActive && (
-          <Badge variant="outline" className="ml-2 text-sm">
-            Nonaktif
-          </Badge>
-        )}
-      </span>
+      <div>
+        <p className="font-medium">
+          {row.original.name}
+          {row.original.isWalkIn && <span className="text-muted-foreground font-normal"> · bawaan</span>}
+        </p>
+        <p className="text-muted-foreground text-sm">
+          <span className="font-mono">{row.original.code}</span>
+          {row.original.phone && ` · ${row.original.phone}`}
+        </p>
+      </div>
     ),
   },
-  { header: 'No. HP', cell: ({ row }) => row.original.phone ?? '—', meta: { className: 'w-40' } },
   {
     header: 'Desa / alamat',
     cell: ({ row }) => [row.original.village, row.original.address].filter(Boolean).join(' · ') || '—',
   },
-  { header: 'Grup', cell: ({ row }) => row.original.customerGroupName ?? '—', meta: { className: 'w-32' } },
+  {
+    header: 'Grup',
+    cell: ({ row }) =>
+      row.original.customerGroupName ? <StatusPill tone="neutral">{row.original.customerGroupName}</StatusPill> : '—',
+    meta: { className: 'w-36' },
+  },
   {
     header: 'Limit kredit',
     cell: ({ row }) =>
@@ -75,6 +81,7 @@ const columns: ColumnDef<Customer, unknown>[] = [
           : formatRupiah(row.original.creditLimit),
     meta: { align: 'right', className: 'w-36' },
   },
+  { header: 'Status', cell: ({ row }) => <ActivePill active={row.original.isActive} />, meta: { className: 'w-32' } },
 ];
 
 export function CustomerList() {
@@ -82,7 +89,7 @@ export function CustomerList() {
   const groups = useCustomerGroups();
   const [q, setQ] = useState('');
   const [groupId, setGroupId] = useState(ALL);
-  const [includeInactive, setIncludeInactive] = useState(false);
+  const [status, setStatus] = useState<'active' | 'all'>('active');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Customer | 'new' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -90,16 +97,16 @@ export function CustomerList() {
   const list = usePartners('customers', {
     q: search || undefined,
     groupId: groupId === ALL ? undefined : groupId,
-    includeInactive,
+    includeInactive: status === 'all',
     page,
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title="Pelanggan"
+        count={list.data ? formatNumber(String(list.data.meta.total)) : undefined}
         description="Data pelanggan, grup harga, limit kredit, dan termin pembayaran."
-        icon={Users}
         actions={
           canWrite && (
             <Button size="lg" className="h-11 text-base" onClick={() => setEditing('new')}>
@@ -111,8 +118,18 @@ export function CustomerList() {
       {message && <Notice tone="success">{message}</Notice>}
 
       <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          label="Status pelanggan"
+          value={status}
+          options={STATUS}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
         <SearchBox
           autoFocus
+          className="order-last ml-auto"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -142,14 +159,6 @@ export function CustomerList() {
             ))}
           </SelectContent>
         </Select>
-        <label className="flex h-11 items-center gap-2 text-base">
-          <Checkbox
-            checked={includeInactive}
-            onCheckedChange={(v) => setIncludeInactive(v === true)}
-            className="size-5"
-          />
-          Tampilkan yang nonaktif
-        </label>
       </div>
 
       {list.isError && <Notice tone="error">{list.error.message}</Notice>}

@@ -94,3 +94,25 @@ CREATE TABLE tbl_imhd (notransaksi varchar(50), kodekantor varchar(10), tanggal 
 CREATE TABLE tbl_imdt (iddetail varchar(50), notransaksi varchar(50), kodeitem varchar(50), jumlah numeric(18,3), satuan varchar(20), harga numeric(18,3));
 INSERT INTO tbl_imhd VALUES ('0000001/BL/UTM/0126','UTM','2026-01-02 08:00','BL','SP0001');
 INSERT INTO tbl_imdt VALUES ('b1','0000001/BL/UTM/0126','NPK CONTOH 16',100,'ZAK',520000);
+
+-- Opening stock (Sprint 4). hargadasar is numeric(35,20) in iPOS. Cases: two FIFO layers (one with a
+-- 20-decimal cost), a fully used layer (sisa 0, ignored), another office (DEP, ignored), an item with
+-- stock but no layer (BIBIT 01), negative stock (SP CONTOH), and stock of an item missing from tbl_item.
+CREATE TABLE tbl_item_im (
+  iddetail varchar(150), notransaksi varchar(100), kodekantor varchar(50), tanggal timestamp, tipe varchar(20),
+  kodeitem varchar(100), jumlahdasar numeric(20,3), hargadasar numeric(35,20), masuk numeric(20,3), sisa numeric(20,3)
+);
+INSERT INTO tbl_item_im VALUES
+  ('im1', '0000001/BL/UTM/0126', 'UTM', '2026-01-02 08:00:00', 'BL', 'UREA CONTOH',   1500, 7100.00000000000000000000, 1500, 1500),
+  ('im2', '0000009/BL/UTM/0226', 'UTM', '2026-02-01 09:30:00', 'BL', 'UREA CONTOH',   2500, 7600.12345678901234567890, 2500, 2500),
+  ('im3', '0000120/BL/UTM/1225', 'UTM', '2025-12-01 08:00:00', 'BL', 'UREA CONTOH',   1000, 7000.00000000000000000000, 1000, 0),
+  ('im4', '0000002/BL/UTM/0126', 'UTM', '2026-01-02 08:05:00', 'BL', 'NPK CONTOH 16', 5000, 10400.00000000000000000000, 5000, 5000),
+  ('im5', 'SA-0001',             'UTM', '2025-11-15 07:00:00', 'SA', 'RACUN A',         12, 60000.00000000000000000000, 12, 12),
+  ('im6', '0000003/BL/UTM/0126', 'UTM', '2026-01-05 10:00:00', 'BL', 'BARANG HILANG',    5, 5000.00000000000000000000, 5, 5),
+  ('im7', '0000001/BL/DEP/0126', 'DEP', '2026-01-03 08:00:00', 'BL', 'UREA CONTOH',    999, 7200.00000000000000000000, 999, 999);
+
+CREATE TABLE tbl_itemstok (kodeitem varchar(100), kantor varchar(50), stok numeric(20,3), hppdasar numeric(35,20));
+INSERT INTO tbl_itemstok VALUES
+  ('UREA CONTOH',   'UTM', 4000, 7400), ('NPK CONTOH 16', 'UTM', 5000, 10400), ('RACUN A', 'UTM', 12, 60000),
+  ('BIBIT 01',      'UTM', 5, 4000),    ('SP CONTOH',     'UTM', -3, 0),       ('BARANG HILANG', 'UTM', 5, 5000),
+  ('UREA CONTOH',   'DEP', 999, 7200),  ('TALI 01',       'UTM', 0, 0);

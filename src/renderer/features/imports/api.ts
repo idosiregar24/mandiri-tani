@@ -3,6 +3,7 @@ import type {
   CommitIposInput,
   ImportBatch,
   IposInspectResult,
+  IposStockInspectResult,
   ResetPreparationInput,
   ResetResult,
 } from '@shared/schemas/imports';
@@ -12,8 +13,8 @@ export const importKeys = {
   batches: ['imports', 'batches'] as const,
 };
 
-export function useImportBatches() {
-  return useQuery({ queryKey: importKeys.batches, queryFn: () => apiGet<ImportBatch[]>('/imports/batches') });
+export function useImportBatches(enabled = true) {
+  return useQuery({ queryKey: importKeys.batches, queryFn: () => apiGet<ImportBatch[]>('/imports/batches'), enabled });
 }
 
 export function useInspectIpos() {
@@ -38,6 +39,18 @@ export function useResetPreparation() {
   const refresh = useRefreshAll();
   return useMutation({
     mutationFn: (input: ResetPreparationInput) => apiPost<ResetResult>('/imports/reset', input),
+    onSuccess: () => void refresh(),
+  });
+}
+
+export function useInspectStock() {
+  return useMutation({ mutationFn: () => apiPost<IposStockInspectResult>('/imports/ipos/stock/inspect', {}) });
+}
+
+export function useCommitStock() {
+  const refresh = useRefreshAll();
+  return useMutation({
+    mutationFn: (input: CommitIposInput) => apiPost<ImportBatch>('/imports/ipos/stock/commit', input),
     onSuccess: () => void refresh(),
   });
 }

@@ -78,29 +78,35 @@ export async function inspect(deps: ImportDeps): Promise<IposInspectResult> {
   };
 }
 
+const countRow = (label: string, ipos: number, imported: number): ReconciliationRow => ({
+  label,
+  kind: 'count',
+  ipos: String(ipos),
+  imported: String(imported),
+  ok: ipos === imported,
+});
+
 function reconcile(plan: MasterPlan, got: repo.ImportedCounts): ReconciliationRow[] {
   const s = plan.sourceCounts;
-  const rows: ReconciliationRow[] = [
-    { label: 'Barang', ipos: s.products, imported: got.products },
-    { label: 'Barang dengan lebih dari satu satuan', ipos: s.multiUnitProducts, imported: got.multiUnitProducts },
-    { label: 'Satuan turunan (mis. ZAK = 50 KG)', ipos: s.derivedUnits, imported: got.derivedUnits },
-    { label: 'Harga jual per satuan', ipos: s.pricedUnits, imported: got.pricedUnits },
-    { label: 'Kategori', ipos: s.categories, imported: got.categories },
-    { label: 'Satuan', ipos: s.units, imported: got.units },
-    { label: 'Grup pelanggan', ipos: s.customerGroups, imported: got.customerGroups },
-    { label: 'Pelanggan (termasuk UMUM)', ipos: s.customers, imported: got.customers },
+  const rows = [
+    countRow('Barang', s.products, got.products),
+    countRow('Barang dengan lebih dari satu satuan', s.multiUnitProducts, got.multiUnitProducts),
+    countRow('Satuan turunan (mis. ZAK = 50 KG)', s.derivedUnits, got.derivedUnits),
+    countRow('Harga jual per satuan', s.pricedUnits, got.pricedUnits),
+    countRow('Kategori', s.categories, got.categories),
+    countRow('Satuan', s.units, got.units),
+    countRow('Grup pelanggan', s.customerGroups, got.customerGroups),
+    countRow('Pelanggan (termasuk UMUM)', s.customers, got.customers),
   ];
   const groupCodes = new Set([...Object.keys(plan.sourceCustomersPerGroup), ...Object.keys(got.customersPerGroup)]);
   for (const code of [...groupCodes].sort()) {
-    rows.push({
-      label: `Pelanggan grup ${code}`,
-      ipos: plan.sourceCustomersPerGroup[code] ?? 0,
-      imported: got.customersPerGroup[code] ?? 0,
-    });
+    rows.push(
+      countRow(`Pelanggan grup ${code}`, plan.sourceCustomersPerGroup[code] ?? 0, got.customersPerGroup[code] ?? 0),
+    );
   }
   rows.push(
-    { label: 'Supplier', ipos: s.suppliers, imported: got.suppliers },
-    { label: 'Rekening bank', ipos: s.bankAccounts, imported: got.bankAccounts },
+    countRow('Supplier', s.suppliers, got.suppliers),
+    countRow('Rekening bank', s.bankAccounts, got.bankAccounts),
   );
   return rows;
 }

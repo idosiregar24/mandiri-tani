@@ -7,14 +7,28 @@
 @theme {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 
+  /* Type scale one notch below Tailwind's default (owner, 2026-10-26: "kecilkan sedikit").
+     Only text shrinks — spacing and control heights stay rem-based on 16px, so tap targets keep ≥ 44px. */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.1875rem; /* 19px */
+  --text-2xl: 1.375rem; /* 22px */
+  --text-3xl: 1.75rem; /* 28px */
+
   --color-tani-green: #2e7d32;
   --color-tani-green-dark: #1b5e20;
   --color-tani-green-light: #e8f5e9;
   --color-tani-soil: #6d4c41;
   --color-tani-harvest: #f9a825;
   --color-tani-cream: #faf8f3;
-  --color-tani-border: #e3ded3;
+  --color-tani-border: #e7e7e4;
   --color-tani-muted: #5f5f5f;
+
+  /* Neutral "modern simple" surfaces (owner's reference designs, 2026-10-26). */
+  --color-canvas: #f4f4f2; /* app background behind the sidebar and the content panel */
+  --color-surface-muted: #f9f9f8; /* table header, inset rows, segmented-control track */
+  --color-nav-active: #ffffff; /* active sidebar item (white card on the canvas) */
 
   --color-success: #2e7d32;
   --color-warning: #f9a825;
@@ -31,22 +45,22 @@
 :root {
   --radius: 0.625rem;
   --background: #ffffff;
-  --foreground: #1c1c1c;
+  --foreground: #18181b;
   --card: #ffffff;
-  --card-foreground: #1c1c1c;
+  --card-foreground: #18181b;
   --popover: #ffffff;
-  --popover-foreground: #1c1c1c;
+  --popover-foreground: #18181b;
   --primary: #2e7d32;
   --primary-foreground: #ffffff;
-  --secondary: #f1efe9;
-  --secondary-foreground: #1c1c1c;
-  --muted: #f1efe9;
-  --muted-foreground: #5f5f5f;
-  --accent: #e8f5e9;
-  --accent-foreground: #1b5e20;
+  --secondary: #f4f4f2;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f2;
+  --muted-foreground: #5c5c5f;
+  --accent: #f1f1ef;
+  --accent-foreground: #18181b;
   --destructive: #c62828;
-  --border: #e3ded3;
-  --input: #d6d0c4;
+  --border: #e7e7e4;
+  --input: #dcdcd8;
   --ring: #2e7d32;
 }
 
@@ -80,10 +94,10 @@
     @apply border-border outline-ring/50;
   }
   html {
-    /* Readable for cashiers: 16px body text minimum (design-standards §0). */
+    /* rem base for spacing and control heights; text size comes from the --text-* scale above. */
     font-size: 16px;
   }
   body {
-    @apply bg-tani-cream text-foreground font-sans antialiased;
+    @apply bg-canvas text-foreground text-base font-sans antialiased;
   }
 }

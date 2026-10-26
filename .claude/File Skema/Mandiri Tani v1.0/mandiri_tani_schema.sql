@@ -534,7 +534,7 @@ CREATE TABLE stock_opnames (
   note          text,
   started_at    timestamptz NOT NULL DEFAULT now(),
   posted_at     timestamptz,
-  created_by    uuid NOT NULL REFERENCES users(id),
+  created_by    uuid REFERENCES users(id),               -- NULL = lewat kunci akses lokal sebelum ada akun (Sprint 4, S4-1)
   posted_by     uuid REFERENCES users(id),
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
@@ -571,7 +571,8 @@ CREATE TABLE stock_adjustments (
   reason_code   text NOT NULL CHECK (reason_code IN ('DAMAGED','LOST','EXPIRED','SAMPLE','OTHER')),
   note          text,
   trx_at        timestamptz NOT NULL DEFAULT now(),
-  created_by    uuid NOT NULL REFERENCES users(id),
+  client_op_id  uuid UNIQUE,                         -- Idempotency-Key (backend-standards §3)
+  created_by    uuid REFERENCES users(id),               -- NULL = lewat kunci akses lokal sebelum ada akun (Sprint 4, S4-1)
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   CHECK (reason_code <> 'OTHER' OR note IS NOT NULL)

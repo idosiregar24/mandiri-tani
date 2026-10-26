@@ -1,7 +1,7 @@
 // One page, one task: a product with its units and selling prices (Sprint 3 D2).
 // The first unit row is the base unit (stock is kept in it); other rows say how many base
 // units they contain — e.g. KG = 1 → Rp 15.000, ZAK = 50 KG → Rp 640.000.
-import { ArrowLeft, Boxes, ChevronDown, Loader2, MoreHorizontal, Plus, Save, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Loader2, MoreHorizontal, Plus, Save, Trash2, Warehouse, X } from 'lucide-react';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router';
@@ -133,22 +133,29 @@ function ProductFormBody({
       <PageHeader
         title={product ? product.name : 'Tambah Barang'}
         description={product ? `Kode ${product.sku}` : 'Isi nama, satuan, dan harga jual. Kode boleh dikosongkan.'}
-        icon={Boxes}
         actions={
-          product &&
-          canWrite && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-11 text-base">
-                  <MoreHorizontal /> Lainnya
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="text-error-ink text-base" onSelect={() => setConfirmDelete(true)}>
-                  <Trash2 /> Hapus barang
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          product && (
+            <>
+              <Button asChild variant="outline" className="h-11 text-base">
+                <Link to={`/stok/${product.id}`}>
+                  <Warehouse /> Kartu Stok
+                </Link>
+              </Button>
+              {canWrite && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-11 text-base">
+                      <MoreHorizontal /> Lainnya
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="text-error-ink text-base" onSelect={() => setConfirmDelete(true)}>
+                      <Trash2 /> Hapus barang
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
           )
         }
       />
@@ -224,7 +231,7 @@ function ProductFormBody({
               </p>
             </div>
             <div className="overflow-hidden rounded-xl border">
-              <div className="bg-tani-green-light text-tani-green-dark grid grid-cols-[10rem_11rem_1fr_1fr_7rem_3rem] gap-3 px-3 py-2 text-base font-semibold">
+              <div className="bg-surface-muted text-muted-foreground grid grid-cols-[10rem_11rem_1fr_1fr_7rem_3rem] gap-3 px-3 py-2 text-base font-semibold">
                 <span>Satuan</span>
                 <span>Isi</span>
                 <span className="text-right">Harga jual umum</span>

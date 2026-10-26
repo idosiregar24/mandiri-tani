@@ -289,11 +289,82 @@ export async function importedCounts(db: Queryable, batchId: string): Promise<Im
  */
 export async function wipePreparationData(db: Queryable): Promise<number> {
   await db.query(
-    `TRUNCATE product_prices, product_barcodes, product_components, product_units, products,
+    // TRUNCATE does not fire the row-level append-only triggers, so the stock ledger can be cleared here
+    // — the only place that may, and only before go-live (checked by the caller). Sprint 4: stock tables;
+    // doc_sequences restart too (go-live seeds them from iPOS).
+    `TRUNCATE stock_layer_consumptions, stock_cost_layers, stock_movements, stock_balances,
+              stock_opname_lines, stock_opnames, stock_adjustment_lines, stock_adjustments, doc_sequences,
+              product_prices, product_barcodes, product_components, product_units, products,
               customers, customer_groups, suppliers, payment_methods, cash_accounts, cash_categories,
               categories, brands, units, warehouses, legacy_refs`,
   );
   const discarded = await db.query(`UPDATE import_batches SET status = 'DISCARDED' WHERE status = 'COMMITTED'`);
   await db.query('SELECT seed_master_defaults()');
   return discarded.rowCount ?? 0;
+}
+
+// ------------------------------------------------------------------ opening stock (Sprint 4)
+export async function scopeState(db: Queryable): Promise<{ master: boolean; stock: boolean; movements: number }> {
+  const r = await db.query<{ master: boolean; stock: boolean; movements: number }>(
+    `SELECT EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'master') AS master,
+            EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'stock') AS stock,
+            (SELECT count(*) FROM stock_movements)::int AS movements`,
+  );
+  return r.rows[0]!;
+}
+
+/** iPOS kodeitem → product id, from the master import's legacy_refs. */
+export async function productIdsByCode(db: Queryable): Promise<Map<string, string>> {
+  const r = await db.query<{ legacy_key: string; entity_id: string }>(
+    `SELECT r.legacy_key, r.entity_id FROM legacy_refs r JOIN products p ON p.id = r.entity_id AND p.deleted_at IS NULL
+     WHERE r.source_system = 'IPOS5' AND r.entity = 'product'`,
+  );
+  return new Map(r.rows.map((x) => [x.legacy_key, x.entity_id]));
+}
+
+export async function setLastPurchaseCosts(db: Queryable, costs: Map<string, string>): Promise<void> {
+  if (costs.size === 0) return;
+  await db.query(
+    `UPDATE products p SET last_purchase_cost = c.cost FROM unnest($1::uuid[], $2::numeric[]) AS c(id, cost) WHERE p.id = c.id`,
+    [[...costs.keys()], [...costs.values()]],
+  );
+}
+
+export async function insertLegacyRefs(
+  db: Queryable,
+  batchId: string,
+  refs: { entity: string; legacyKey: string; entityId: string }[],
+): Promise<void> {
+  if (refs.length === 0) return;
+  await db.query(
+    `INSERT INTO legacy_refs (id, import_batch_id, source_system, entity, legacy_key, entity_id)
+     SELECT id, $1, 'IPOS5', entity, legacy_key, entity_id FROM unnest($2::uuid[], $3::text[], $4::text[], $5::uuid[]) AS t(id, entity, legacy_key, entity_id)`,
+    [
+      batchId,
+      refs.map(() => uuidv7()),
+      refs.map((r) => r.entity),
+      refs.map((r) => r.legacyKey),
+      refs.map((r) => r.entityId),
+    ],
+  );
+}
+
+/** What the opening-stock batch actually wrote, counted from the stock tables. */
+export async function stockImportedCounts(
+  db: Queryable,
+  batchId: string,
+): Promise<{ products: number; layers: number; qty: string; value: string; minusProducts: number }> {
+  const r = await db.query<{ products: number; layers: number; qty: string; value: string; minusProducts: number }>(
+    `WITH m AS (SELECT id, product_id, warehouse_id, qty FROM stock_movements WHERE source_type = 'OPENING' AND source_id = $1),
+          per AS (SELECT product_id, warehouse_id, sum(qty) AS qty FROM m GROUP BY 1, 2)
+     SELECT (SELECT count(*) FROM per WHERE qty <> 0)::int AS products,
+            (SELECT count(*) FROM legacy_refs r JOIN stock_cost_layers l ON l.source_movement_id = r.entity_id
+              WHERE r.import_batch_id = $1 AND r.entity = 'stock_layer')::int AS layers,
+            (SELECT coalesce(sum(qty), 0)::numeric(18,4)::text FROM m) AS qty,
+            (SELECT round(coalesce(sum(l.qty_remaining * l.unit_cost), 0), 2)::text
+               FROM stock_cost_layers l JOIN per ON per.product_id = l.product_id AND per.warehouse_id = l.warehouse_id) AS value,
+            (SELECT count(*) FROM per WHERE qty < 0)::int AS "minusProducts"`,
+    [batchId],
+  );
+  return r.rows[0]!;
 }

@@ -4,6 +4,7 @@ import {
   formatNumber,
   formatQty,
   formatRupiah,
+  formatStockQty,
   moneyInputText,
   parseMoneyInput,
   parseQtyInput,
@@ -54,6 +55,14 @@ describe('format (id-ID)', () => {
     expect(parseQtyInput('2,')).toBe('2');
     expect(parseQtyInput('1.000,5')).toBeNull();
     expect(parseQtyInput('0,00001')).toBeNull();
+  });
+
+  it('shows stock in sale units plus the base remainder', () => {
+    expect(formatStockQty('4020.0000', 'KG', 'ZAK', '50')).toEqual({ main: '80 zak 20 kg', detail: '4.020 kg' });
+    expect(formatStockQty('4000.0000', 'KG', 'ZAK', '50')).toEqual({ main: '80 zak', detail: '4.000 kg' });
+    expect(formatStockQty('20.0000', 'KG', 'ZAK', '50')).toEqual({ main: '20 kg', detail: null });
+    expect(formatStockQty('-60.0000', 'KG', 'ZAK', '50')).toEqual({ main: '-1 zak 10 kg', detail: '-60 kg' });
+    expect(formatStockQty('12.0000', 'BTL', 'BTL', '1')).toEqual({ main: '12 btl', detail: null });
   });
 
   it('formats dates in Asia/Jakarta', () => {

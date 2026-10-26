@@ -265,3 +265,73 @@ export async function loadMasterRows(db: Queryable): Promise<IposMasterRows> {
     pricedUnitsInSource: Number(priced[0]?.n ?? 0),
   };
 }
+
+// ------------------------------------------------------------------ opening-stock scope (FR-MIG-02, Sprint 4)
+/** The only iPOS office the store uses (Analisis §2) — its stock becomes the default warehouse's. */
+export const IPOS_OFFICE = 'UTM';
+
+export const STOCK_FINGERPRINT: Record<string, readonly string[]> = {
+  tbl_itemstok: ['kodeitem', 'kantor', 'stok', 'hppdasar'],
+  tbl_item_im: ['iddetail', 'kodeitem', 'kodekantor', 'tanggal', 'tipe', 'hargadasar', 'sisa'],
+};
+
+export interface IposLayer {
+  iddetail: string;
+  kodeitem: string;
+  /** "2026-01-02T08:00:00" — iPOS local time (WIB), read as text so the Node time zone cannot shift it. */
+  tanggal: string;
+  tipe: string | null;
+  hargadasar: string;
+  sisa: string;
+}
+export interface IposItemStock {
+  kodeitem: string;
+  stok: string;
+  hppdasar: string | null;
+}
+
+export interface IposStockRows {
+  layers: IposLayer[];
+  stocks: IposItemStock[];
+  /** kodeitem → hargadasar of the newest purchase (BL) layer, else of the newest layer (S4-4). */
+  lastCost: Map<string, string>;
+  /** Counted by SQL in iPOS itself — the "iPOS" side of the reconciliation (S3-11). */
+  source: { products: number; layers: number; qty: string; value: string; minusProducts: number };
+}
+
+export async function loadStockRows(db: Queryable): Promise<IposStockRows> {
+  const [layers, stocks, last, totals] = await Promise.all([
+    db.query<IposLayer>(
+      `SELECT iddetail, trim(kodeitem) AS kodeitem, to_char(tanggal, 'YYYY-MM-DD"T"HH24:MI:SS') AS tanggal, tipe,
+              hargadasar::text AS hargadasar, sisa::text AS sisa
+       FROM tbl_item_im WHERE kodekantor = $1 AND sisa > 0 AND kodeitem IS NOT NULL
+       ORDER BY kodeitem, tanggal, iddetail`,
+      [IPOS_OFFICE],
+    ),
+    db.query<IposItemStock>(
+      `SELECT trim(kodeitem) AS kodeitem, stok::text AS stok, hppdasar::text AS hppdasar
+       FROM tbl_itemstok WHERE kantor = $1 AND kodeitem IS NOT NULL AND stok <> 0`,
+      [IPOS_OFFICE],
+    ),
+    db.query<{ kodeitem: string; hargadasar: string }>(
+      `SELECT DISTINCT ON (trim(kodeitem)) trim(kodeitem) AS kodeitem, hargadasar::text AS hargadasar
+       FROM tbl_item_im WHERE kodekantor = $1 AND kodeitem IS NOT NULL AND hargadasar > 0
+       ORDER BY trim(kodeitem), (tipe = 'BL') DESC, tanggal DESC, iddetail DESC`,
+      [IPOS_OFFICE],
+    ),
+    db.query<IposStockRows['source']>(
+      `SELECT (SELECT count(*) FROM tbl_itemstok WHERE kantor = $1 AND stok <> 0)::int AS products,
+              (SELECT count(*) FROM tbl_item_im WHERE kodekantor = $1 AND sisa > 0)::int AS layers,
+              (SELECT coalesce(sum(stok), 0)::numeric(18,4)::text FROM tbl_itemstok WHERE kantor = $1) AS qty,
+              (SELECT round(coalesce(sum(sisa * hargadasar), 0), 2)::text FROM tbl_item_im WHERE kodekantor = $1 AND sisa > 0) AS value,
+              (SELECT count(*) FROM tbl_itemstok WHERE kantor = $1 AND stok < 0)::int AS "minusProducts"`,
+      [IPOS_OFFICE],
+    ),
+  ]);
+  return {
+    layers: layers.rows,
+    stocks: stocks.rows,
+    lastCost: new Map(last.rows.map((r) => [r.kodeitem, r.hargadasar])),
+    source: totals.rows[0]!,
+  };
+}

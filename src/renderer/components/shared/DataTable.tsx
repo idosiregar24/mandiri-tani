@@ -63,14 +63,14 @@ export function DataTable<T>({
       <Table className="text-base">
         <TableHeader>
           {table.getHeaderGroups().map((hg) => (
-            <TableRow key={hg.id} className="bg-tani-green-light hover:bg-tani-green-light">
+            <TableRow key={hg.id} className="bg-surface-muted hover:bg-surface-muted">
               {hg.headers.map((h) => (
                 <TableHead
                   key={h.id}
                   // Column widths come from meta.className; the header keeps its own font (twMerge: last wins).
                   className={cn(
                     h.column.columnDef.meta?.className,
-                    'text-tani-green-dark h-11 font-sans text-base font-semibold',
+                    'text-muted-foreground h-11 px-4 font-sans text-sm font-medium',
                     alignClass[h.column.columnDef.meta?.align ?? 'left'],
                   )}
                 >
@@ -107,7 +107,7 @@ export function DataTable<T>({
                     : undefined
                 }
                 className={cn(
-                  'h-12',
+                  'hover:bg-surface-muted h-14',
                   onRowClick &&
                     'cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
                   isRowMuted?.(row.original) && 'text-muted-foreground',
@@ -117,7 +117,7 @@ export function DataTable<T>({
                   <TableCell
                     key={cell.id}
                     className={cn(
-                      'py-2 whitespace-normal',
+                      'px-4 py-2.5 whitespace-normal',
                       alignClass[cell.column.columnDef.meta?.align ?? 'left'],
                       cell.column.columnDef.meta?.align === 'right' && 'tabular-nums',
                       cell.column.columnDef.meta?.className,
@@ -140,22 +140,26 @@ export function DataTable<T>({
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              className="h-11 text-base"
+              size="icon"
+              className="size-11"
+              aria-label="Halaman sebelumnya"
               disabled={paging.page <= 1 || isLoading}
               onClick={() => paging.onPageChange(paging.page - 1)}
             >
-              <ChevronLeft /> Sebelumnya
+              <ChevronLeft className="size-5" />
             </Button>
-            <span className="px-2 tabular-nums">
-              Hal {paging.page} / {pages}
+            <span className="min-w-14 text-center tabular-nums" aria-label={`Halaman ${paging.page} dari ${pages}`}>
+              {paging.page}/{pages}
             </span>
             <Button
               variant="outline"
-              className="h-11 text-base"
+              size="icon"
+              className="size-11"
+              aria-label="Halaman berikutnya"
               disabled={paging.page >= pages || isLoading}
               onClick={() => paging.onPageChange(paging.page + 1)}
             >
-              Berikutnya <ChevronRight />
+              <ChevronRight className="size-5" />
             </Button>
           </div>
         </div>

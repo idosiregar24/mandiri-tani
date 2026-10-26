@@ -17,6 +17,7 @@ import type { ImportHooks } from '../src/server/modules/imports/service';
 import { masterRoutes } from '../src/server/modules/masters/routes';
 import { paymentMethodRoutes } from '../src/server/modules/payment-methods/routes';
 import { productRoutes } from '../src/server/modules/products/routes';
+import { stockRoutes } from '../src/server/modules/stock/routes';
 import { supplierRoutes } from '../src/server/modules/suppliers/routes';
 import { createServer, type PosServer } from '../src/server/server';
 import type { DbConfig, Pool } from '../src/server/db/pool';
@@ -38,7 +39,7 @@ export interface TestApi {
     method: string,
     path: string,
     body?: unknown,
-    opts?: { as?: Role | 'ANONYMOUS' },
+    opts?: { as?: Role | 'ANONYMOUS'; headers?: Record<string, string> },
   ): Promise<ApiResponse<T>>;
   close(): Promise<void>;
 }
@@ -71,7 +72,7 @@ async function loadIposFixture(config: DbConfig): Promise<void> {
       source_database text, source_version text, tables integer NOT NULL, restored_at timestamptz NOT NULL DEFAULT now())`);
     await client.query(
       `INSERT INTO _mtpos_source (file_name, sha256, size_bytes, dump_created_at, source_database, source_version, tables)
-       VALUES ('contoh.i5bu', repeat('ab', 32), 12345, '2026-10-24 12:01:26', 'i5_contoh', '9.5.3', 15)`,
+       VALUES ('contoh.i5bu', repeat('ab', 32), 12345, '2026-10-24 12:01:26', 'i5_contoh', '9.5.3', 17)`,
     );
   } finally {
     await client.end();
@@ -107,7 +108,7 @@ export async function startTestApi(opts: TestApiOptions = {}): Promise<TestApi> 
   });
   const pool = server.pool;
   const api = express.Router();
-  for (const r of [masterRoutes, customerRoutes, supplierRoutes, paymentMethodRoutes, productRoutes])
+  for (const r of [masterRoutes, customerRoutes, supplierRoutes, paymentMethodRoutes, productRoutes, stockRoutes])
     api.use(r({ pool }));
   api.use(
     importRoutes({ pool, iposDb: ipos?.config ?? { ...tdb.config, database: 'ipos_tidak_ada' }, hooks: opts.hooks }),
@@ -121,9 +122,14 @@ export async function startTestApi(opts: TestApiOptions = {}): Promise<TestApi> 
   return {
     pool,
     iposDb: ipos?.config ?? null,
-    async call<T>(method: string, path: string, body?: unknown, opts?: { as?: Role | 'ANONYMOUS' }) {
+    async call<T>(
+      method: string,
+      path: string,
+      body?: unknown,
+      opts?: { as?: Role | 'ANONYMOUS'; headers?: Record<string, string> },
+    ) {
       const as = opts?.as ?? 'OWNER';
-      const headers: Record<string, string> = { accept: 'application/json' };
+      const headers: Record<string, string> = { accept: 'application/json', ...opts?.headers };
       if (as === 'OWNER') headers.authorization = `Bearer ${TEST_ACCESS_KEY}`;
       if (body !== undefined) headers['content-type'] = 'application/json';
       const res = await fetch(`${as === 'KASIR' ? kasirBase : ownerBase}${path}`, {

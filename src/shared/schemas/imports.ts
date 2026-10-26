@@ -74,11 +74,36 @@ export interface IposInspectResult {
   blocker: string | null;
 }
 
-/** FR-MIG-04: one line of "iPOS vs hasil impor". */
+/** FR-MIG-04: one line of "iPOS vs hasil impor". Values are decimal strings (counts, qty, rupiah — no floats). */
 export interface ReconciliationRow {
   label: string;
-  ipos: number;
-  imported: number;
+  kind: 'count' | 'qty' | 'money';
+  ipos: string;
+  imported: string;
+  /** Equal — or, for inventory value, within the HPP rounding tolerance (sprint-4 S4-5). */
+  ok: boolean;
+}
+
+/** Opening stock scope (FR-MIG-02 "Stok awal"), counted in iPOS itself. */
+export interface IposStockCounts {
+  /** Products with stock in iPOS (office UTM). */
+  products: number;
+  /** FIFO layers with sisa > 0 (tbl_item_im). */
+  layers: number;
+  /** Σ base-unit quantity, decimal string. */
+  qty: string;
+  /** Σ sisa × hargadasar in rupiah, decimal string (2 dp). */
+  value: string;
+  /** Products with negative stock in iPOS. */
+  minusProducts: number;
+}
+
+export interface IposStockInspectResult {
+  source: IposSourceInfo;
+  fingerprint: FingerprintProblem[];
+  counts: IposStockCounts | null;
+  issues: DataIssue[];
+  blocker: string | null;
 }
 
 export interface ImportBatch {
@@ -91,7 +116,7 @@ export interface ImportBatch {
   status: 'RUNNING' | 'COMMITTED' | 'FAILED' | 'DISCARDED';
   startedAt: string;
   finishedAt: string | null;
-  counts: IposMasterCounts | null;
+  counts: IposMasterCounts | IposStockCounts | null;
   reconciliation: ReconciliationRow[];
   issues: DataIssue[];
   error: string | null;

@@ -7,6 +7,12 @@ import { MasterDataPage } from '@/pages/masters/MasterDataPage';
 import { PrintTestPage } from '@/pages/printer/PrintTestPage';
 import { ProductForm } from '@/pages/products/ProductForm';
 import { ProductList } from '@/pages/products/ProductList';
+import { AdjustmentForm } from '@/pages/stock/AdjustmentForm';
+import { AdjustmentList } from '@/pages/stock/AdjustmentList';
+import { OpnameList } from '@/pages/stock/OpnameList';
+import { OpnamePage } from '@/pages/stock/OpnamePage';
+import { StockCardPage } from '@/pages/stock/StockCardPage';
+import { StockList } from '@/pages/stock/StockList';
 import { SupplierList } from '@/pages/suppliers/SupplierList';
 import { AppShell } from './AppShell';
 import { BootGate } from './BootGate';
@@ -23,6 +29,12 @@ const router = createBrowserRouter([
       { path: '/barang', element: <ProductList /> },
       { path: '/barang/baru', element: <ProductForm /> },
       { path: '/barang/:id', element: <ProductForm /> },
+      { path: '/stok', element: <StockList /> },
+      { path: '/stok/:productId', element: <StockCardPage /> },
+      { path: '/penyesuaian', element: <AdjustmentList /> },
+      { path: '/penyesuaian/baru', element: <AdjustmentForm /> },
+      { path: '/opname', element: <OpnameList /> },
+      { path: '/opname/:id', element: <OpnamePage /> },
       { path: '/pelanggan', element: <CustomerList /> },
       { path: '/supplier', element: <SupplierList /> },
       { path: '/data-lain', element: <MasterDataPage /> },

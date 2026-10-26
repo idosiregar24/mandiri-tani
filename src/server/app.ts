@@ -14,6 +14,7 @@ import type { ImportHooks } from './modules/imports/service';
 import { masterRoutes } from './modules/masters/routes';
 import { paymentMethodRoutes } from './modules/payment-methods/routes';
 import { productRoutes } from './modules/products/routes';
+import { stockRoutes } from './modules/stock/routes';
 import { supplierRoutes } from './modules/suppliers/routes';
 
 export interface AppDeps {
@@ -64,6 +65,7 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   api.use(supplierRoutes({ pool }));
   api.use(paymentMethodRoutes({ pool }));
   api.use(productRoutes({ pool }));
+  api.use(stockRoutes({ pool }));
   if (iposDb) api.use(importRoutes({ pool, iposDb, hooks }));
   api.use(notFound);
   app.use('/api/v1', api);

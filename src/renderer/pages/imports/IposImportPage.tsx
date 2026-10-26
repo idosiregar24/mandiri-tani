@@ -1,8 +1,17 @@
-// "Impor iPOS" (Sprint 3 E8, FR-MIG-01…04/08): 1) pilih file → 2) pratinjau & masalah data →
-// 3) impor → 4) rekonsiliasi. Reset data persiapan at the bottom. Owner only.
-import { CheckCircle2, FileInput, FolderOpen, Loader2, RotateCcw, Upload, XCircle } from 'lucide-react';
+// "Impor iPOS" (Sprint 3 E8 + Sprint 4 C5, FR-MIG-01…04/08): 1) pilih file → 2) pratinjau & masalah
+// data → 3) impor master (+ rekonsiliasi) → 4) impor stok awal (+ rekonsiliasi) → Selesai.
+// Reset data persiapan at the bottom. Owner only.
+import { CheckCircle2, FolderOpen, Loader2, PackageCheck, RotateCcw, Upload, XCircle } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { IMPORT_PURPOSES, type ImportBatch, type ImportPurpose, type IposInspectResult } from '@shared/schemas/imports';
+import {
+  IMPORT_PURPOSES,
+  type DataIssue,
+  type ImportBatch,
+  type ImportPurpose,
+  type IposInspectResult,
+  type IposStockInspectResult,
+  type ReconciliationRow,
+} from '@shared/schemas/imports';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Notice } from '@/components/shared/Notice';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -12,9 +21,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useCommitIpos, useImportBatches, useInspectIpos, useResetPreparation } from '@/features/imports/api';
+import {
+  useCommitIpos,
+  useCommitStock,
+  useImportBatches,
+  useInspectIpos,
+  useInspectStock,
+  useResetPreparation,
+} from '@/features/imports/api';
 import { desktopBridge } from '@/lib/desktop';
-import { formatDateTime, formatNumber } from '@/lib/format';
+import { formatDateTime, formatNumber, formatRupiah } from '@/lib/format';
 import { useCan } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -47,26 +63,39 @@ export function IposImportPage() {
   const canImport = useCan('imports.ipos');
   const canReset = useCan('system.reset_preparation');
   const inspect = useInspectIpos();
+  const inspectStock = useInspectStock();
   const commit = useCommitIpos();
+  const commitStock = useCommitStock();
   const batches = useImportBatches();
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<{ message: string; detail?: string } | null>(null);
   const [purpose, setPurpose] = useState<ImportPurpose>('DEVELOPMENT');
-  const [result, setResult] = useState<ImportBatch | null>(null);
+  const [masterResult, setMasterResult] = useState<ImportBatch | null>(null);
+  const [stockResult, setStockResult] = useState<ImportBatch | null>(null);
 
   if (!canImport) return <Notice tone="warning">Hanya Owner yang boleh mengimpor data dari iPOS.</Notice>;
 
+  const resetAll = () => {
+    setPickError(null);
+    setMasterResult(null);
+    setStockResult(null);
+    commit.reset();
+    commitStock.reset();
+    inspect.reset();
+    inspectStock.reset();
+  };
+
   const choose = async () => {
     if (!bridge) return;
-    setPickError(null);
-    setResult(null);
-    commit.reset();
-    inspect.reset();
+    resetAll();
     setPicking(true);
     try {
       const r = await bridge.chooseIposBackup();
       if (r.status === 'FAILED') setPickError({ message: r.message, detail: r.detail });
-      if (r.status === 'RESTORED') inspect.mutate();
+      if (r.status === 'RESTORED') {
+        inspect.mutate();
+        inspectStock.mutate();
+      }
     } finally {
       setPicking(false);
     }
@@ -77,39 +106,74 @@ export function IposImportPage() {
       { purpose },
       {
         onSuccess: (batch) => {
-          setResult(batch);
+          setMasterResult(batch);
           inspect.reset();
-          // The temporary iPOS copy is no longer needed (FR-MIG-01).
+          // Stock is the next scope from the same file: refresh its preview (its blocker just changed).
+          inspectStock.mutate();
+        },
+      },
+    );
+
+  const runStockImport = () =>
+    commitStock.mutate(
+      { purpose },
+      {
+        onSuccess: (batch) => {
+          setStockResult(batch);
+          inspectStock.reset();
+          // Both scopes done — the temporary iPOS copy is no longer needed (FR-MIG-01).
           void bridge?.cleanupIposImport();
         },
       },
     );
 
+  const finish = () => {
+    void bridge?.cleanupIposImport();
+    resetAll();
+  };
+
   const preview = inspect.data;
+  const stockPreview = inspectStock.data;
+  const fileOpen = Boolean(preview || stockPreview || masterResult);
+  const done = scopesDone(batches.data ?? []);
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Impor dari iPOS"
-        description="Pindahkan data master (barang, satuan, harga, pelanggan, supplier, rekening) dari backup iPOS 5."
-        icon={FileInput}
+        description="Pindahkan data master (barang, harga, pelanggan, supplier, rekening) lalu stok awal dari backup iPOS 5."
       />
 
       {!bridge && <Notice tone="warning">Impor hanya bisa dijalankan dari aplikasi di komputer toko.</Notice>}
 
-      <Step n={1} title="Pilih file backup iPOS" done={Boolean(preview) || Boolean(result)}>
+      <ScopeStatus done={done} />
+      {done.master && !done.stock && !stockPreview && !stockResult && (
+        <Notice tone="warning" title="Stok awal belum diimpor — semua stok di aplikasi masih 0.">
+          Klik <strong>Pilih File Backup</strong>, pilih file backup iPOS yang sama, lalu jalankan langkah 4{' '}
+          <strong>Impor Stok Awal</strong>. Data master tidak diimpor ulang.
+        </Notice>
+      )}
+
+      <Step n={1} title="Pilih file backup iPOS" done={fileOpen || Boolean(stockResult)}>
         <p className="text-muted-foreground text-base">
           Buka iPOS → Backup Database, lalu pilih file <span className="font-mono">.i5bu</span> hasilnya. File hanya
           dibaca, tidak diubah dan tidak dikirim ke mana pun.
         </p>
-        <Button
-          size="lg"
-          className="mt-3 h-12 text-base"
-          onClick={() => void choose()}
-          disabled={!bridge || picking || inspect.isPending || commit.isPending}
-        >
-          {picking || inspect.isPending ? <Loader2 className="animate-spin" /> : <FolderOpen />}
-          {picking ? 'Membuka backup…' : inspect.isPending ? 'Memeriksa isi backup…' : 'Pilih File Backup'}
-        </Button>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <Button
+            size="lg"
+            className="h-12 text-base"
+            onClick={() => void choose()}
+            disabled={!bridge || picking || inspect.isPending || commit.isPending || commitStock.isPending}
+          >
+            {picking || inspect.isPending ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+            {picking ? 'Membuka backup…' : inspect.isPending ? 'Memeriksa isi backup…' : 'Pilih File Backup'}
+          </Button>
+          {fileOpen && !stockResult && (
+            <Button variant="outline" size="lg" className="h-12 text-base" onClick={finish}>
+              Selesai &amp; tutup file
+            </Button>
+          )}
+        </div>
         {pickError && (
           <Notice tone="error" title={pickError.message} className="mt-3">
             {pickError.detail && <pre className="mt-2 text-sm whitespace-pre-wrap">{pickError.detail}</pre>}
@@ -129,15 +193,146 @@ export function IposImportPage() {
           onPurpose={setPurpose}
           onImport={runImport}
           importing={commit.isPending}
+          masterDone={Boolean(done.master)}
         />
       )}
       {commit.isError && <Notice tone="error">{commit.error.message}</Notice>}
-      {result && <Reconciliation batch={result} />}
+      {masterResult && <Reconciliation n={3} title="Data master masuk — cocokkan dengan iPOS" batch={masterResult} />}
+
+      {stockPreview && (
+        <StockStep
+          preview={stockPreview}
+          purpose={purpose}
+          onImport={runStockImport}
+          importing={commitStock.isPending}
+        />
+      )}
+      {commitStock.isError && <Notice tone="error">{commitStock.error.message}</Notice>}
+      {stockResult && <Reconciliation n={4} title="Stok awal masuk — cocokkan dengan iPOS" batch={stockResult} />}
 
       <History batches={batches.data ?? []} />
 
       {canReset && <ResetCard />}
     </div>
+  );
+}
+
+function Issues({ issues }: { issues: DataIssue[] }) {
+  if (issues.length === 0) return null;
+  return (
+    <div className="mt-5 space-y-2">
+      <h3 className="text-lg font-semibold">Catatan kualitas data</h3>
+      <p className="text-muted-foreground text-base">Tidak menghalangi impor. Periksa setelah impor bila perlu.</p>
+      {issues.map((i) => (
+        <details key={i.code} className="rounded-lg border px-4 py-3">
+          <summary className="cursor-pointer text-base">
+            <span className="font-semibold">{i.title}</span> — {formatNumber(String(i.count))} data
+            <span className="text-muted-foreground"> · {i.action}</span>
+          </summary>
+          {i.examples.length > 0 && (
+            <ul className="mt-2 list-disc pl-5 text-base">
+              {i.examples.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+              {i.count > i.examples.length && (
+                <li className="text-muted-foreground">dan {i.count - i.examples.length} lainnya</li>
+              )}
+            </ul>
+          )}
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function StockStep({
+  preview,
+  purpose,
+  onImport,
+  importing,
+}: {
+  preview: IposStockInspectResult;
+  purpose: ImportPurpose;
+  onImport: () => void;
+  importing: boolean;
+}) {
+  const c = preview.counts;
+  return (
+    <Step n={4} title="Impor stok awal">
+      <p className="text-muted-foreground text-base">
+        Stok tiap barang beserta lapisan HPP FIFO-nya disalin dari iPOS, jadi nilai persediaan dan urutan HPP sama
+        dengan iPOS.
+      </p>
+      {preview.fingerprint.length > 0 && (
+        <Notice tone="error" title="Struktur tabel stok tidak cocok — impor stok dihentikan" className="mt-4">
+          {preview.fingerprint
+            .map((f) => `${f.table}${f.missingColumns.length ? ` (${f.missingColumns.join(', ')})` : ''}`)
+            .join(' · ')}
+        </Notice>
+      )}
+      {c && (
+        <dl className="mt-4 grid gap-3 sm:grid-cols-4">
+          {[
+            ['Barang berstok', formatNumber(String(c.products))],
+            ['Lapisan HPP', formatNumber(String(c.layers))],
+            ['Nilai persediaan', formatRupiah(c.value)],
+            ['Stok minus', formatNumber(String(c.minusProducts))],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-surface-muted rounded-lg border p-3">
+              <dt className="text-muted-foreground text-sm">{label}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <Issues issues={preview.issues} />
+      <div className="mt-5">
+        {preview.blocker ? (
+          <Notice tone="warning">{preview.blocker}</Notice>
+        ) : (
+          <Button size="lg" className="h-12 text-base" onClick={onImport} disabled={importing}>
+            {importing ? <Loader2 className="animate-spin" /> : <PackageCheck />} Impor Stok Awal (
+            {PURPOSE_LABELS[purpose]})
+          </Button>
+        )}
+      </div>
+    </Step>
+  );
+}
+
+/** Which scopes are already in the app (latest COMMITTED batch per scope). */
+function scopesDone(batches: ImportBatch[]): { master: ImportBatch | null; stock: ImportBatch | null } {
+  const find = (scope: 'master' | 'stock') =>
+    batches.find((b) => b.status === 'COMMITTED' && b.scope.includes(scope)) ?? null;
+  return { master: find('master'), stock: find('stock') };
+}
+
+function ScopeStatus({ done }: { done: ReturnType<typeof scopesDone> }) {
+  const rows = [
+    { label: 'Data master', hint: 'barang, satuan, harga, pelanggan, supplier, rekening', batch: done.master },
+    { label: 'Stok awal', hint: 'jumlah stok & lapisan HPP FIFO', batch: done.stock },
+  ];
+  return (
+    <section className="divide-y rounded-xl border">
+      {rows.map((r) => (
+        <div key={r.label} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 text-base">
+          <div>
+            <p className="font-medium">{r.label}</p>
+            <p className="text-muted-foreground text-sm">{r.hint}</p>
+          </div>
+          {r.batch ? (
+            <span className="text-success-ink flex items-center gap-2">
+              <CheckCircle2 className="size-5" /> Sudah diimpor{' '}
+              {formatDateTime(r.batch.finishedAt ?? r.batch.startedAt)}
+            </span>
+          ) : (
+            <span className="text-warning-ink flex items-center gap-2">
+              <XCircle className="size-5" /> Belum diimpor
+            </span>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -168,12 +363,14 @@ function Preview({
   onPurpose,
   onImport,
   importing,
+  masterDone,
 }: {
   preview: IposInspectResult;
   purpose: ImportPurpose;
   onPurpose: (p: ImportPurpose) => void;
   onImport: () => void;
   importing: boolean;
+  masterDone: boolean;
 }) {
   const s = preview.source;
   return (
@@ -205,11 +402,9 @@ function Preview({
         {preview.counts && (
           <Table className="mt-4 text-base">
             <TableHeader>
-              <TableRow className="bg-tani-green-light hover:bg-tani-green-light">
-                <TableHead className="text-tani-green-dark text-base font-semibold">Data</TableHead>
-                <TableHead className="text-tani-green-dark text-right text-base font-semibold">
-                  Jumlah di iPOS
-                </TableHead>
+              <TableRow className="bg-surface-muted hover:bg-surface-muted">
+                <TableHead className="text-muted-foreground text-sm font-medium">Data</TableHead>
+                <TableHead className="text-muted-foreground text-right text-sm font-medium">Jumlah di iPOS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -225,36 +420,13 @@ function Preview({
           </Table>
         )}
 
-        {preview.issues.length > 0 && (
-          <div className="mt-5 space-y-2">
-            <h3 className="text-lg font-semibold">Catatan kualitas data</h3>
-            <p className="text-muted-foreground text-base">
-              Tidak menghalangi impor. Periksa setelah impor bila perlu.
-            </p>
-            {preview.issues.map((i) => (
-              <details key={i.code} className="rounded-lg border px-4 py-3">
-                <summary className="cursor-pointer text-base">
-                  <span className="font-semibold">{i.title}</span> — {formatNumber(String(i.count))} data
-                  <span className="text-muted-foreground"> · {i.action}</span>
-                </summary>
-                {i.examples.length > 0 && (
-                  <ul className="mt-2 list-disc pl-5 text-base">
-                    {i.examples.map((e) => (
-                      <li key={e}>{e}</li>
-                    ))}
-                    {i.count > i.examples.length && (
-                      <li className="text-muted-foreground">dan {i.count - i.examples.length} lainnya</li>
-                    )}
-                  </ul>
-                )}
-              </details>
-            ))}
-          </div>
-        )}
+        <Issues issues={preview.issues} />
       </Step>
 
-      <Step n={3} title="Impor data master">
-        {preview.blocker ? (
+      <Step n={3} title="Impor data master" done={masterDone}>
+        {masterDone ? (
+          <Notice tone="success">Data master sudah diimpor. Lanjutkan ke langkah 4 di bawah untuk stok awal.</Notice>
+        ) : preview.blocker ? (
           <Notice tone="warning">{preview.blocker}</Notice>
         ) : (
           <div className="flex flex-wrap items-end gap-3">
@@ -283,49 +455,49 @@ function Preview({
   );
 }
 
-function Reconciliation({ batch }: { batch: ImportBatch }) {
-  const allMatch = batch.reconciliation.every((r) => r.ipos === r.imported);
+function formatRow(r: ReconciliationRow, v: string): string {
+  return r.kind === 'money' ? formatRupiah(v) : formatNumber(v);
+}
+
+function Reconciliation({ n, title, batch }: { n: number; title: string; batch: ImportBatch }) {
+  const allMatch = batch.reconciliation.every((r) => r.ok);
   return (
-    <Step n={4} title="Cocokkan hasil impor" done>
+    <Step n={n} title={title} done>
       <Notice
         tone={allMatch ? 'success' : 'warning'}
         title={
-          allMatch
-            ? 'Impor selesai — semua jumlah cocok dengan iPOS.'
-            : 'Impor selesai, tetapi ada jumlah yang berbeda.'
+          allMatch ? 'Impor selesai — semua angka cocok dengan iPOS.' : 'Impor selesai, tetapi ada angka yang berbeda.'
         }
       >
-        {!allMatch && 'Periksa baris yang ditandai merah. Bila salah, jalankan Reset data persiapan lalu impor ulang.'}
+        {!allMatch &&
+          'Periksa baris yang ditandai merah dan catatan kualitas data. Bila salah, jalankan Reset data persiapan lalu impor ulang.'}
       </Notice>
       <Table className="mt-4 text-base">
         <TableHeader>
-          <TableRow className="bg-tani-green-light hover:bg-tani-green-light">
-            <TableHead className="text-tani-green-dark text-base font-semibold">Data</TableHead>
-            <TableHead className="text-tani-green-dark text-right text-base font-semibold">iPOS</TableHead>
-            <TableHead className="text-tani-green-dark text-right text-base font-semibold">Hasil impor</TableHead>
+          <TableRow className="bg-surface-muted hover:bg-surface-muted">
+            <TableHead className="text-muted-foreground text-sm font-medium">Data</TableHead>
+            <TableHead className="text-muted-foreground text-right text-sm font-medium">iPOS</TableHead>
+            <TableHead className="text-muted-foreground text-right text-sm font-medium">Hasil impor</TableHead>
             <TableHead className="w-16" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {batch.reconciliation.map((r) => {
-            const ok = r.ipos === r.imported;
-            return (
-              <TableRow key={r.label} className={cn(!ok && 'bg-error/10')}>
-                <TableCell>{r.label}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatNumber(String(r.ipos))}</TableCell>
-                <TableCell className={cn('text-right tabular-nums', !ok && 'text-error-ink font-semibold')}>
-                  {formatNumber(String(r.imported))}
-                </TableCell>
-                <TableCell>
-                  {ok ? (
-                    <CheckCircle2 className="text-success-ink size-5" aria-label="cocok" />
-                  ) : (
-                    <XCircle className="text-error-ink size-5" aria-label="berbeda" />
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {batch.reconciliation.map((r) => (
+            <TableRow key={r.label} className={cn(!r.ok && 'bg-error/10')}>
+              <TableCell>{r.label}</TableCell>
+              <TableCell className="text-right tabular-nums">{formatRow(r, r.ipos)}</TableCell>
+              <TableCell className={cn('text-right tabular-nums', !r.ok && 'text-error-ink font-semibold')}>
+                {formatRow(r, r.imported)}
+              </TableCell>
+              <TableCell>
+                {r.ok ? (
+                  <CheckCircle2 className="text-success-ink size-5" aria-label="cocok" />
+                ) : (
+                  <XCircle className="text-error-ink size-5" aria-label="berbeda" />
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
     </Step>
@@ -342,11 +514,11 @@ function History({ batches }: { batches: ImportBatch[] }) {
       <CardContent>
         <Table className="text-base">
           <TableHeader>
-            <TableRow className="bg-tani-green-light hover:bg-tani-green-light">
-              <TableHead className="text-tani-green-dark text-base font-semibold">Waktu</TableHead>
-              <TableHead className="text-tani-green-dark text-base font-semibold">File</TableHead>
-              <TableHead className="text-tani-green-dark text-base font-semibold">Tujuan</TableHead>
-              <TableHead className="text-tani-green-dark text-base font-semibold">Status</TableHead>
+            <TableRow className="bg-surface-muted hover:bg-surface-muted">
+              <TableHead className="text-muted-foreground text-sm font-medium">Waktu</TableHead>
+              <TableHead className="text-muted-foreground text-sm font-medium">File</TableHead>
+              <TableHead className="text-muted-foreground text-sm font-medium">Tujuan</TableHead>
+              <TableHead className="text-muted-foreground text-sm font-medium">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

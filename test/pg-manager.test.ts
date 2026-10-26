@@ -144,7 +144,7 @@ describe('PgManager backup & iPOS restore', () => {
     const sha256 = createHash('sha256').update(readFileSync(dump)).digest('hex');
 
     const info = await manager.restoreIposBackup(dump, join(root, 'work'));
-    expect(info).toMatchObject({ fileName: basename(dump), sha256, tables: 15, sourceDatabase: 'mandiri_tani' });
+    expect(info).toMatchObject({ fileName: basename(dump), sha256, tables: 17, sourceDatabase: 'mandiri_tani' });
     expect(info.sourceVersion).toMatch(/^18\./);
     expect(info.dumpCreatedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
     expect(readdirSync(join(root, 'work'))).toEqual([]); // the TOC list file is cleaned up
@@ -152,7 +152,7 @@ describe('PgManager backup & iPOS restore', () => {
     const items = await appQuery(manager.port, 'SELECT count(*)::int AS n FROM tbl_item', IPOS_IMPORT_DB);
     expect(items.rows[0]).toEqual({ n: 8 });
     const source = await appQuery(manager.port, 'SELECT file_name, sha256, tables FROM _mtpos_source', IPOS_IMPORT_DB);
-    expect(source.rows).toEqual([{ file_name: basename(dump), sha256, tables: 15 }]);
+    expect(source.rows).toEqual([{ file_name: basename(dump), sha256, tables: 17 }]);
     const extras = await appQuery(
       manager.port,
       "SELECT (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal)::int AS triggers, (SELECT count(*) FROM pg_proc WHERE proname = 'ipos_fn')::int AS functions",

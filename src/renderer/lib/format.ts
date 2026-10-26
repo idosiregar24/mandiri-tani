@@ -95,3 +95,34 @@ export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—';
   return dateOnly.format(new Date(value));
 }
+
+/**
+ * Stock in words people use at the store: 4.020 kg of a pupuk sold per ZAK (= 50 kg) reads
+ * "80 zak 20 kg"; the base quantity ("4.020 kg") is the detail. Units without a bigger sale
+ * unit just show the base quantity.
+ */
+export function formatStockQty(
+  qty: string,
+  baseUnit: string,
+  saleUnit: string,
+  saleConversion: string,
+): { main: string; detail: string | null } {
+  const base = formatQty(qty, baseUnit);
+  if (
+    !isDecimalString(qty) ||
+    saleUnit === baseUnit ||
+    !isDecimalString(saleConversion) ||
+    !dec(saleConversion).gt(1)
+  ) {
+    return { main: base, detail: null };
+  }
+  const q = dec(qty);
+  const sign = q.isNegative() ? '-' : '';
+  const abs = q.abs();
+  const whole = abs.div(saleConversion).floor();
+  const rest = abs.minus(whole.times(saleConversion));
+  const parts = [];
+  if (!whole.isZero()) parts.push(formatQty(whole.toFixed(), saleUnit));
+  if (!rest.isZero() || whole.isZero()) parts.push(formatQty(rest.toFixed(), baseUnit));
+  return { main: sign + parts.join(' '), detail: whole.isZero() ? null : base };
+}
