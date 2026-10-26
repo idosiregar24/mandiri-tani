@@ -12,11 +12,14 @@ const bridge: PosBridge = {
   },
   retryBoot: () => ipcRenderer.invoke(IPC.lifecycleRetry),
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
+  accessToken: () => ipcRenderer.invoke(IPC.appAccessToken),
   openLogFolder: () => ipcRenderer.invoke(IPC.appOpenLogs),
   listPrinters: () => ipcRenderer.invoke(IPC.printerList),
   printTest: (request) => ipcRenderer.invoke(IPC.printerTest, request),
   getPrinterSettings: () => ipcRenderer.invoke(IPC.printerSettingsGet),
   savePrinterSettings: (settings) => ipcRenderer.invoke(IPC.printerSettingsSave, settings),
+  chooseIposBackup: () => ipcRenderer.invoke(IPC.importChooseIpos),
+  cleanupIposImport: () => ipcRenderer.invoke(IPC.importCleanup),
 };
 
 contextBridge.exposeInMainWorld('pos', bridge);

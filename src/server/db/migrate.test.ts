@@ -29,7 +29,18 @@ describe('runMigrations', () => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1",
     );
     expect(rows.map((t) => t.table_name)).toEqual(
-      expect.arrayContaining(['settings', 'users', 'devices', 'sessions', 'audit_logs', 'doc_sequences', 'sync_ops', 'import_batches', 'legacy_refs', 'schema_migrations']),
+      expect.arrayContaining([
+        'settings',
+        'users',
+        'devices',
+        'sessions',
+        'audit_logs',
+        'doc_sequences',
+        'sync_ops',
+        'import_batches',
+        'legacy_refs',
+        'schema_migrations',
+      ]),
     );
   });
 
@@ -54,7 +65,10 @@ describe('runMigrations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mtpos-mig-'));
     try {
       cpSync(migrationsDir, dir, { recursive: true });
-      writeFileSync(join(dir, '9999_broken.sql'), 'CREATE TABLE half_made (id int); SELECT * FROM table_that_does_not_exist;');
+      writeFileSync(
+        join(dir, '9999_broken.sql'),
+        'CREATE TABLE half_made (id int); SELECT * FROM table_that_does_not_exist;',
+      );
       await expect(runMigrations(pool, dir)).rejects.toThrow(/9999_broken\.sql gagal/);
       const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = 'half_made'");
       expect(rowCount).toBe(0);

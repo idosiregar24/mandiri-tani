@@ -1,5 +1,6 @@
 // Boot / shutdown state machine (PRD §3.2, §3.6, §3.7). The main process owns
 // PostgreSQL and the embedded server; the renderer only watches this state.
+import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import { LIFECYCLE_MESSAGES, type LifecycleState, type LifecycleStatus } from '@
 import { createServer, type PosServer } from '../server/server';
 import { readConfig, updateConfig } from './config';
 import type { AppPaths } from './paths';
-import { PgError, PgManager } from './pg/PgManager';
+import { PgError, PgManager, type IposRestoreInfo } from './pg/PgManager';
 import { createSecrets, loadSecrets, SecretsError, type DbSecrets } from './secrets';
 
 export const SERVER_PORT = 3000;
@@ -24,11 +25,20 @@ export interface LifecycleOptions {
 }
 
 export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
-  private current: LifecycleStatus = { state: 'BOOTING', message: LIFECYCLE_MESSAGES.BOOTING, at: new Date().toISOString() };
+  private current: LifecycleStatus = {
+    state: 'BOOTING',
+    message: LIFECYCLE_MESSAGES.BOOTING,
+    at: new Date().toISOString(),
+  };
   private pg: PgManager | null = null;
   private server: PosServer | null = null;
   private booting: Promise<void> | null = null;
   private shuttingDown: Promise<void> | null = null;
+  /**
+   * Sprint-3 decision S3-1 (until Sprint 2 logins): a fresh random key per app start, given
+   * only to this PC's own window over IPC. The API treats it as OWNER on device K01.
+   */
+  readonly localAccessKey = randomBytes(32).toString('base64url');
 
   constructor(private readonly opts: LifecycleOptions) {
     super();
@@ -81,7 +91,9 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
       const fresh = !existsSync(join(paths.pgData, 'PG_VERSION'));
       if (!secrets) {
         if (!fresh) {
-          throw new SecretsError('Data database ada tetapi kunci aksesnya hilang. Pulihkan file secrets.bin atau dari backup.');
+          throw new SecretsError(
+            'Data database ada tetapi kunci aksesnya hilang. Pulihkan file secrets.bin atau dari backup.',
+          );
         }
         secrets = createSecrets(paths.secretsFile);
       }
@@ -101,11 +113,20 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
       this.server = createServer({
         host: '0.0.0.0',
         port: SERVER_PORT,
-        db: { host: '127.0.0.1', port: this.pg.port, database: DATABASE, user: APP_USER, password: secrets.appPassword },
+        db: {
+          host: '127.0.0.1',
+          port: this.pg.port,
+          database: DATABASE,
+          user: APP_USER,
+          password: secrets.appPassword,
+        },
         appVersion: this.opts.appVersion,
         logger: logger.child({ component: 'server' }),
         migrationsDir: paths.migrationsDir,
         staticDir: this.opts.serveRenderer ? paths.rendererDir : undefined,
+        localAccessKey: this.localAccessKey,
+        // Only the main process may run pg_dump (golden rule 8) — the server asks through this hook (S3-4).
+        hooks: { backup: (label) => this.requirePg().backupDatabase(paths.backupDir, label) },
       });
       await this.server.migrate();
 
@@ -117,6 +138,21 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
       logger.error({ err }, 'boot failed');
       this.set('FATAL', describe(err));
     }
+  }
+
+  private requirePg(): PgManager {
+    if (!this.pg || this.current.state !== 'READY')
+      throw new PgError('Database belum siap. Tunggu sampai aplikasi selesai menyala.');
+    return this.pg;
+  }
+
+  /** FR-MIG-01: restore an iPOS backup into the temporary import database. */
+  restoreIposBackup(file: string): Promise<IposRestoreInfo> {
+    return this.requirePg().restoreIposBackup(file, join(this.opts.paths.dataDir, 'tmp'));
+  }
+
+  async dropIposImport(): Promise<void> {
+    await this.pg?.dropIposImport();
   }
 
   /** After sleep/hibernate: make sure PostgreSQL is still up (PRD §3.7). */

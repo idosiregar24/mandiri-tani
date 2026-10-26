@@ -14,7 +14,11 @@ export async function listPrinters(contents: WebContents): Promise<PrinterInfo[]
   const electronList = await contents.getPrintersAsync();
   const defaults = new Set(
     electronList
-      .filter((p) => ((p.options ?? {}) as Record<string, string>)['is-default'] === 'true' || (p as { isDefault?: boolean }).isDefault)
+      .filter(
+        (p) =>
+          ((p.options ?? {}) as Record<string, string>)['is-default'] === 'true' ||
+          (p as { isDefault?: boolean }).isDefault,
+      )
       .map((p) => p.name),
   );
   let list: PrinterInfo[];
@@ -52,7 +56,12 @@ export async function listPrinters(contents: WebContents): Promise<PrinterInfo[]
   return list.sort((a, b) => Number(b.ready) - Number(a.ready) || a.displayName.localeCompare(b.displayName));
 }
 
-export async function printTest(contents: WebContents, payload: unknown, helperDir: string, logger: Logger): Promise<PrintResult> {
+export async function printTest(
+  contents: WebContents,
+  payload: unknown,
+  helperDir: string,
+  logger: Logger,
+): Promise<PrintResult> {
   const parsed = PrintTestRequest.safeParse(payload);
   if (!parsed.success) return { ok: false, code: 'INVALID_REQUEST', message: 'Permintaan cetak tidak valid.' };
   const req = parsed.data;

@@ -188,7 +188,7 @@ CREATE TABLE import_batches (
   summary        jsonb NOT NULL DEFAULT '{}'::jsonb, -- jumlah per entitas, peringatan kualitas data (DQ-*)
   started_at     timestamptz NOT NULL DEFAULT now(),
   finished_at    timestamptz,
-  created_by     uuid NOT NULL REFERENCES users(id),
+  created_by     uuid REFERENCES users(id),           -- NULL = impor lewat kunci akses lokal sebelum ada akun (Sprint 3, S3-2)
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -378,6 +378,7 @@ CREATE TABLE products (
 );
 CREATE UNIQUE INDEX products_sku_uq ON products (upper(sku)) WHERE deleted_at IS NULL;
 CREATE INDEX products_name_trgm ON products USING gin (name gin_trgm_ops);
+CREATE INDEX products_sku_trgm ON products USING gin (sku gin_trgm_ops);
 CREATE INDEX products_attributes_gin ON products USING gin (attributes jsonb_path_ops);
 CREATE INDEX products_category_idx ON products (category_id);
 CREATE INDEX products_brand_idx ON products (brand_id);
@@ -1202,39 +1203,70 @@ CREATE TRIGGER stock_layer_consumptions_append_only
 -- stock_cost_layers TIDAK append-only: qty_remaining berkurang saat dipakai (hanya oleh stockService).
 
 -- =============================================================================
--- 9. DATA AWAL (seed sistem — data toko diisi wizard first-run / importer iPOS)
---    Grup pelanggan lain (Bronze/Silver/Gold/RAM 1/RAM 2), kategori, item,
---    pelanggan, supplier dan rekening bank datang dari importer (FR-MIG).
+-- 9. DATA AWAL (seed sistem — data toko diisi importer iPOS / Owner)
+--    Satu fungsi idempoten: dipanggil di sini dan lagi
+--    oleh "Reset data persiapan" (FR-MIG-08) setelah data master dihapus.
+-- Data toko lain (grup Bronze/Silver/Gold/RAM, kategori, item, pelanggan, supplier,
+-- rekening bank) datang dari importer iPOS atau diinput Owner.
 -- =============================================================================
-INSERT INTO customer_groups (code, name) VALUES ('UMUM', 'Umum');
+CREATE OR REPLACE FUNCTION seed_master_defaults() RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- Satuan = daftar tbl_itemsatuan iPOS (kode dipertahankan agar akrab bagi toko: ZAK, bukan SAK)
+  INSERT INTO units (id, code, name)
+  SELECT uuidv7(), v.code, v.name
+  FROM (VALUES ('PCS','Pcs'), ('BTL','Botol'), ('LTR','Liter'), ('GLN','Galon'), ('PAIL','Pail'),
+               ('KG','Kilogram'), ('ZAK','Zak'), ('GRAM','Gram'), ('BOX','Box'), ('DUS','Dus'), ('PAK','Pak'))
+       AS v(code, name)
+  WHERE NOT EXISTS (SELECT 1 FROM units u WHERE upper(u.code) = v.code AND u.deleted_at IS NULL);
 
-INSERT INTO cash_accounts (code, name, kind) VALUES
-  ('LACI', 'Laci Kasir', 'DRAWER'), ('KAS_TOKO', 'Kas Toko', 'CASH');
+  INSERT INTO customer_groups (id, code, name)
+  SELECT uuidv7(), 'UMUM', 'Umum'
+  WHERE NOT EXISTS (SELECT 1 FROM customer_groups WHERE upper(code) = 'UMUM' AND deleted_at IS NULL);
 
-INSERT INTO cash_categories (code, name, direction, is_system, is_operating_expense) VALUES
-  ('SALES',        'Penjualan',              'IN',   true,  false),
-  ('SALE_REFUND',  'Pengembalian Penjualan', 'OUT',  true,  false),
-  ('AR_PAYMENT',   'Pelunasan Piutang',      'IN',   true,  false),
-  ('PURCHASE',     'Pembelian Tunai',        'OUT',  true,  false),
-  ('AP_PAYMENT',   'Pembayaran Hutang',      'OUT',  true,  false),
-  ('PURCHASE_REFUND','Pengembalian Pembelian','IN',  true,  false),
-  ('OPENING_CASH', 'Modal Awal Shift',       'IN',   true,  false),
-  ('TRANSFER',     'Setoran / Transfer Kas', 'BOTH', true,  false),
-  ('CAPITAL',      'Modal Owner',            'IN',   true,  false),
-  ('DRAWING',      'Prive Owner',            'OUT',  true,  false),
-  ('OPEX_EXPEDITION', 'Biaya Ekspedisi',        'OUT', false, true),
-  ('OPEX_UNLOADING',  'Upah Bongkar Muat',      'OUT', false, true),
-  ('OPEX_VEHICLE',    'BBM & Perbaikan Kendaraan','OUT', false, true),
-  ('OPEX_WAGES',      'Upah / Gaji',            'OUT', false, true),
-  ('OPEX_GENERAL',    'Biaya Operasional Lain', 'OUT', false, true);
--- Kategori OPEX di atas = pola 498 kas keluar iPOS (Analisis §2).
+  -- Pelanggan UMUM (walk-in) bawaan — FR-MD-08; nota KSR tanpa nama memakai pelanggan ini.
+  INSERT INTO customers (id, code, name, customer_group_id, is_walk_in, credit_limit)
+  SELECT uuidv7(), 'UMUM', 'Umum',
+         (SELECT id FROM customer_groups WHERE upper(code) = 'UMUM' AND deleted_at IS NULL), true, 0
+  WHERE NOT EXISTS (SELECT 1 FROM customers WHERE is_walk_in);
 
-INSERT INTO payment_methods (code, name, kind, sort_order) VALUES
-  ('CASH',   'Tunai',   'CASH',   1),
-  ('CREDIT', 'Piutang', 'CREDIT', 9);
--- QRIS & TRANSFER dibuat di wizard karena butuh cash_account BANK tujuan.
+  -- Satu toko, satu gudang (Analisis §2): kode UTM sama dengan iPOS agar nomor dokumen identik.
+  INSERT INTO warehouses (id, code, name, is_default)
+  SELECT uuidv7(), 'UTM', 'Gudang Utama', true
+  WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE deleted_at IS NULL);
 
--- Satuan = daftar tbl_itemsatuan iPOS (kode dipertahankan agar akrab bagi toko: ZAK, bukan SAK)
-INSERT INTO units (code, name) VALUES
-  ('PCS','Pcs'), ('BTL','Botol'), ('LTR','Liter'), ('GLN','Galon'), ('PAIL','Pail'),
-  ('KG','Kilogram'), ('ZAK','Zak'), ('GRAM','Gram'), ('BOX','Box'), ('DUS','Dus'), ('PAK','Pak');
+  INSERT INTO cash_accounts (id, code, name, kind)
+  SELECT uuidv7(), v.code, v.name, v.kind
+  FROM (VALUES ('LACI', 'Laci Kasir', 'DRAWER'), ('KAS_TOKO', 'Kas Toko', 'CASH')) AS v(code, name, kind)
+  WHERE NOT EXISTS (SELECT 1 FROM cash_accounts c WHERE upper(c.code) = v.code AND c.deleted_at IS NULL);
+
+  -- Kategori OPEX = pola 498 kas keluar iPOS (Analisis §2).
+  INSERT INTO cash_categories (id, code, name, direction, is_system, is_operating_expense)
+  SELECT uuidv7(), v.code, v.name, v.direction, v.is_system, v.opex
+  FROM (VALUES
+    ('SALES',           'Penjualan',                 'IN',   true,  false),
+    ('SALE_REFUND',     'Pengembalian Penjualan',    'OUT',  true,  false),
+    ('AR_PAYMENT',      'Pelunasan Piutang',         'IN',   true,  false),
+    ('PURCHASE',        'Pembelian Tunai',           'OUT',  true,  false),
+    ('AP_PAYMENT',      'Pembayaran Hutang',         'OUT',  true,  false),
+    ('PURCHASE_REFUND', 'Pengembalian Pembelian',    'IN',   true,  false),
+    ('OPENING_CASH',    'Modal Awal Shift',          'IN',   true,  false),
+    ('TRANSFER',        'Setoran / Transfer Kas',    'BOTH', true,  false),
+    ('CAPITAL',         'Modal Owner',               'IN',   true,  false),
+    ('DRAWING',         'Prive Owner',               'OUT',  true,  false),
+    ('OPEX_EXPEDITION', 'Biaya Ekspedisi',           'OUT',  false, true),
+    ('OPEX_UNLOADING',  'Upah Bongkar Muat',         'OUT',  false, true),
+    ('OPEX_VEHICLE',    'BBM & Perbaikan Kendaraan', 'OUT',  false, true),
+    ('OPEX_WAGES',      'Upah / Gaji',               'OUT',  false, true),
+    ('OPEX_GENERAL',    'Biaya Operasional Lain',    'OUT',  false, true)
+  ) AS v(code, name, direction, is_system, opex)
+  WHERE NOT EXISTS (SELECT 1 FROM cash_categories c WHERE upper(c.code) = v.code AND c.deleted_at IS NULL);
+
+  -- QRIS & TRANSFER dibuat Owner (atau importer: rekening iPOS) karena butuh rekening BANK tujuan.
+  INSERT INTO payment_methods (id, code, name, kind, sort_order)
+  SELECT uuidv7(), v.code, v.name, v.kind, v.sort_order
+  FROM (VALUES ('CASH', 'Tunai', 'CASH', 1), ('CREDIT', 'Piutang', 'CREDIT', 9)) AS v(code, name, kind, sort_order)
+  WHERE NOT EXISTS (SELECT 1 FROM payment_methods p WHERE upper(p.code) = v.code AND p.deleted_at IS NULL);
+END $$;
+
+SELECT seed_master_defaults();

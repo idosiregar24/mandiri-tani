@@ -8,12 +8,21 @@ export const IPC = {
   lifecycleChanged: 'pos:lifecycle:changed',
   lifecycleRetry: 'pos:lifecycle:retry',
   appInfo: 'pos:app:info',
+  appAccessToken: 'pos:app:access-token',
   appOpenLogs: 'pos:app:open-logs',
   printerList: 'pos:printer:list',
   printerTest: 'pos:printer:test',
   printerSettingsGet: 'pos:printer:settings-get',
   printerSettingsSave: 'pos:printer:settings-save',
+  importChooseIpos: 'pos:import:choose-ipos',
+  importCleanup: 'pos:import:cleanup',
 } as const;
+
+/** Result of picking + restoring an iPOS backup (FR-MIG-01). Errors come back as data, not as thrown IPC errors. */
+export type IposPickResult =
+  | { status: 'RESTORED'; fileName: string; tables: number }
+  | { status: 'CANCELED' }
+  | { status: 'FAILED'; message: string; detail?: string };
 
 export interface AppInfo {
   name: string;
@@ -30,12 +39,18 @@ export interface PosBridge {
   onLifecycle(listener: (status: LifecycleStatus) => void): () => void;
   retryBoot(): Promise<void>;
   appInfo(): Promise<AppInfo>;
+  /** Local access key for the REST API (sprint-3 S3-1) — replaced by a login session in Sprint 2. */
+  accessToken(): Promise<string>;
   openLogFolder(): Promise<void>;
   listPrinters(): Promise<PrinterInfo[]>;
   printTest(request: PrintTestRequest): Promise<PrintResult>;
   getPrinterSettings(): Promise<PrinterSettings>;
   /** Saves this PC's printer settings; resolves with what was stored. */
   savePrinterSettings(settings: PrinterSettings): Promise<PrinterSettings>;
+  /** Owner picks an iPOS backup (.i5bu); the main process restores it into the temporary import database. */
+  chooseIposBackup(): Promise<IposPickResult>;
+  /** Drops the temporary import database (after an import or when leaving the wizard). */
+  cleanupIposImport(): Promise<void>;
 }
 
 declare global {

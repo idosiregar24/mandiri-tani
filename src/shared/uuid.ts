@@ -14,7 +14,7 @@ export function uuidv7(now: number = Date.now()): string {
     seq = (seq + 1) & 0x0fff;
   } else {
     lastMs = now;
-    seq = ((bytes[6] ?? 0) << 8 | (bytes[7] ?? 0)) & 0x07ff;
+    seq = (((bytes[6] ?? 0) << 8) | (bytes[7] ?? 0)) & 0x07ff;
   }
 
   const ms = BigInt(now);

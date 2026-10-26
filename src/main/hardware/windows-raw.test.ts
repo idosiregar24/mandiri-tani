@@ -11,7 +11,9 @@ afterAll(() => rmSync(helperDir, { recursive: true, force: true }));
 
 describe('sendRaw (windows-raw transport)', () => {
   it('reports a missing printer with a clear Indonesian message', async () => {
-    const err = await sendRaw('Printer Yang Tidak Ada 123', new Uint8Array([0x1b, 0x40]), { helperDir }).catch((e: unknown) => e);
+    const err = await sendRaw('Printer Yang Tidak Ada 123', new Uint8Array([0x1b, 0x40]), { helperDir }).catch(
+      (e: unknown) => e,
+    );
     expect(err).toBeInstanceOf(RawPrintError);
     expect((err as RawPrintError).message).toMatch(/Printer tidak ditemukan/);
     expect((err as RawPrintError).detail).toMatch(/OpenPrinter/);
@@ -24,7 +26,9 @@ describe('sendRaw (windows-raw transport)', () => {
   });
 
   it('treats the printer name as data, never as a command', async () => {
-    const err = await sendRaw('x"; Remove-Item C:\\nope; "', new Uint8Array([0x40]), { helperDir }).catch((e: unknown) => e);
+    const err = await sendRaw('x"; Remove-Item C:\\nope; "', new Uint8Array([0x40]), { helperDir }).catch(
+      (e: unknown) => e,
+    );
     expect(err).toBeInstanceOf(RawPrintError);
     expect((err as RawPrintError).detail).toMatch(/OpenPrinter/);
   });

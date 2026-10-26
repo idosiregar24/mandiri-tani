@@ -8,6 +8,7 @@ import { runMigrations, type MigrationResult } from './db/migrate';
 import { createPool, type DbConfig, type Pool } from './db/pool';
 import { ensureHubDevice } from './db/bootstrap';
 import { AppError } from './lib/errors';
+import type { ImportHooks } from './modules/imports/service';
 
 export interface ServerConfig {
   host: string; // '0.0.0.0' in the app (FR-SRV-01)
@@ -17,6 +18,11 @@ export interface ServerConfig {
   logger: Logger;
   migrationsDir: string;
   staticDir?: string;
+  /** See AppDeps.localAccessKey (sprint-3 S3-1). */
+  localAccessKey?: string;
+  /** Database the iPOS backup is restored into, on the same cluster as `db` (default ipos_import). */
+  iposDatabase?: string;
+  hooks?: ImportHooks;
 }
 
 export interface PosServer {
@@ -44,7 +50,15 @@ export function createServer(config: ServerConfig): PosServer {
     },
 
     start() {
-      const app = createApp({ pool, logger, appVersion: config.appVersion, staticDir: config.staticDir });
+      const app = createApp({
+        pool,
+        logger,
+        appVersion: config.appVersion,
+        localAccessKey: config.localAccessKey,
+        iposDb: { ...config.db, database: config.iposDatabase ?? 'ipos_import' },
+        hooks: config.hooks,
+        staticDir: config.staticDir,
+      });
       http = createHttpServer(app);
       http.on('connection', (socket) => {
         sockets.add(socket);

@@ -1,13 +1,14 @@
 // IPC for lifecycle, app info and hardware only — business data goes through the REST API (ADR-01).
-import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { join } from 'node:path';
 import type { Logger } from 'pino';
-import { IPC, type AppInfo } from '@shared/bridge';
+import { IPC, type AppInfo, type IposPickResult } from '@shared/bridge';
 import { PrinterSettings } from '@shared/printing';
 import { readConfig, updateConfig } from './config';
 import type { Lifecycle } from './lifecycle';
 import { SERVER_PORT } from './lifecycle';
 import type { AppPaths } from './paths';
+import { PgError } from './pg/PgManager';
 import { listPrinters, printTest } from './printing';
 import { isAllowedUrl } from './window';
 
@@ -39,6 +40,12 @@ export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logge
     };
   });
 
+  // Only this machine's own window gets the API key; other devices on the Wi-Fi never see it.
+  ipcMain.handle(IPC.appAccessToken, (event) => {
+    assertTrustedSender(event);
+    return lifecycle.localAccessKey;
+  });
+
   ipcMain.handle(IPC.appOpenLogs, async (event) => {
     assertTrustedSender(event);
     await shell.openPath(paths.logDir);
@@ -59,6 +66,40 @@ export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logge
   ipcMain.handle(IPC.printerSettingsGet, (event) => {
     assertTrustedSender(event);
     return readConfig(paths.configFile).printers;
+  });
+
+  // FR-MIG-01: the owner picks the backup in a native dialog — the renderer never sees or sends a path.
+  ipcMain.handle(IPC.importChooseIpos, async (event): Promise<IposPickResult> => {
+    assertTrustedSender(event);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Pilih file backup iPOS',
+      filters: [
+        { name: 'Backup iPOS 5', extensions: ['i5bu'] },
+        { name: 'Semua file', extensions: ['*'] },
+      ],
+      properties: ['openFile' as const],
+    };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = picked.filePaths[0];
+    if (picked.canceled || !file) return { status: 'CANCELED' };
+    try {
+      const info = await lifecycle.restoreIposBackup(file);
+      logger.info(
+        { fileName: info.fileName, sha256: info.sha256, tables: info.tables },
+        'iPOS backup restored for import',
+      );
+      return { status: 'RESTORED', fileName: info.fileName, tables: info.tables };
+    } catch (err) {
+      logger.error({ err }, 'iPOS backup restore failed');
+      if (err instanceof PgError) return { status: 'FAILED', message: err.message, detail: err.detail };
+      return { status: 'FAILED', message: 'Backup iPOS gagal dibuka. Lihat folder log untuk rinciannya.' };
+    }
+  });
+
+  ipcMain.handle(IPC.importCleanup, async (event) => {
+    assertTrustedSender(event);
+    await lifecycle.dropIposImport();
   });
 
   ipcMain.handle(IPC.printerSettingsSave, (event, payload: unknown) => {

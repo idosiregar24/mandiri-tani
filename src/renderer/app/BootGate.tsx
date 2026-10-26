@@ -24,7 +24,13 @@ export function BootGate({ children }: { children: ReactNode }) {
   // Packaged app: the boot screen is loaded from disk; main reloads it from the server once READY.
   const waitingForReload = window.location.protocol === 'file:';
   if (status?.state === 'READY' && !waitingForReload) return <>{children}</>;
-  return <BootScreen status={status} onRetry={() => void bridge.retryBoot()} onOpenLogs={() => void bridge.openLogFolder()} />;
+  return (
+    <BootScreen
+      status={status}
+      onRetry={() => void bridge.retryBoot()}
+      onOpenLogs={() => void bridge.openLogFolder()}
+    />
+  );
 }
 
 function BootScreen({

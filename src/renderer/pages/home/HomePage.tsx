@@ -1,5 +1,5 @@
 // Sprint 1 placeholder: proves UI → embedded API → PostgreSQL end to end.
-// Replaced by the real app shell in Sprint 2.
+// Lives inside the app shell (Sprint 3 D1); becomes the dashboard in Sprint 10.
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Database, FolderOpen, Printer, Server, XCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -19,7 +19,7 @@ export function HomePage() {
   const info = useQuery({ queryKey: ['app-info'], queryFn: () => window.pos!.appInfo(), enabled: Boolean(window.pos) });
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <div className="max-w-3xl">
       <h1 className="text-tani-green-dark text-3xl font-bold">Mandiri Tani POS</h1>
       <p className="text-muted-foreground mt-2 text-lg">Fondasi aplikasi sudah berjalan. Layar kasir menyusul.</p>
 
@@ -28,14 +28,28 @@ export function HomePage() {
           <CardTitle className="text-xl">Status sistem</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-lg">
-          <StatusRow icon={<Server className="size-6" />} label="Server toko" ok={health.isSuccess} text={
-            health.isSuccess ? `Berjalan (versi ${health.data.version})` : health.isError ? health.error.message : 'Memeriksa…'
-          } />
-          <StatusRow icon={<Database className="size-6" />} label="Database" ok={health.data?.db.ok ?? false} text={
-            health.data?.db.ok
-              ? `PostgreSQL ${health.data.db.version} — ${health.data.db.latency_ms} ms`
-              : (health.data?.db.error ?? 'Memeriksa…')
-          } />
+          <StatusRow
+            icon={<Server className="size-6" />}
+            label="Server toko"
+            ok={health.isSuccess}
+            text={
+              health.isSuccess
+                ? `Berjalan (versi ${health.data.version})`
+                : health.isError
+                  ? health.error.message
+                  : 'Memeriksa…'
+            }
+          />
+          <StatusRow
+            icon={<Database className="size-6" />}
+            label="Database"
+            ok={health.data?.db.ok ?? false}
+            text={
+              health.data?.db.ok
+                ? `PostgreSQL ${health.data.db.version} — ${health.data.db.latency_ms} ms`
+                : (health.data?.db.error ?? 'Memeriksa…')
+            }
+          />
           {info.data && (
             <p className="text-muted-foreground text-base">
               Data tersimpan di <span className="font-mono">{info.data.dataDir}</span>
@@ -51,12 +65,17 @@ export function HomePage() {
               <Printer /> Uji Cetak Printer
             </Link>
           </Button>
-          <Button variant="outline" size="lg" className="h-12 text-base" onClick={() => void window.pos!.openLogFolder()}>
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-12 text-base"
+            onClick={() => void window.pos!.openLogFolder()}
+          >
             <FolderOpen /> Buka folder log
           </Button>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

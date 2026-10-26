@@ -51,7 +51,15 @@ describe('struk test pages (thermal, ESC/POS)', () => {
 });
 
 describe('pickPrinter', () => {
-  const base = { displayName: '', isDefault: false, isLx310: false, isReceipt: false, port: 'USB001', status: 'Normal', ready: true };
+  const base = {
+    displayName: '',
+    isDefault: false,
+    isLx310: false,
+    isReceipt: false,
+    port: 'USB001',
+    status: 'Normal',
+    ready: true,
+  };
   const list: PrinterInfo[] = [
     { ...base, name: 'Microsoft Print to PDF', port: 'PORTPROMPT:' },
     { ...base, name: 'EPSON LX-310 ESC/P', isLx310: true, port: 'LPT1:', status: 'Error', ready: false },

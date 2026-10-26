@@ -42,7 +42,9 @@ export async function runMigrations(pool: Pool, dir: string, logger?: Logger): P
           checksum    text NOT NULL,
           applied_at  timestamptz NOT NULL DEFAULT now()
         )`);
-      const { rows } = await db.query<{ name: string; checksum: string }>('SELECT name, checksum FROM schema_migrations');
+      const { rows } = await db.query<{ name: string; checksum: string }>(
+        'SELECT name, checksum FROM schema_migrations',
+      );
       const done = new Map(rows.map((r) => [r.name, r.checksum]));
 
       const applied: string[] = [];

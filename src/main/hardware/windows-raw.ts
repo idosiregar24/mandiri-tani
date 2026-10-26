@@ -107,7 +107,14 @@ export function listWindowsPrinters(timeoutMs = 20_000): Promise<WindowsPrinter[
             | { Name: string; DriverName: string; PortName: string; Status: string }
             | { Name: string; DriverName: string; PortName: string; Status: string }[];
           const list = Array.isArray(raw) ? raw : [raw];
-          resolve(list.map((p) => ({ name: p.Name, driver: p.DriverName ?? '', port: p.PortName ?? '', status: p.Status ?? '' })));
+          resolve(
+            list.map((p) => ({
+              name: p.Name,
+              driver: p.DriverName ?? '',
+              port: p.PortName ?? '',
+              status: p.Status ?? '',
+            })),
+          );
         } catch (parseErr) {
           reject(parseErr instanceof Error ? parseErr : new Error(String(parseErr)));
         }
@@ -153,7 +160,20 @@ export async function sendRaw(printer: string, bytes: Uint8Array, opts: RawPrint
     await new Promise<void>((resolve, reject) => {
       execFile(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helper, '-Printer', printer, '-JobFile', job, '-DocName', opts.docName ?? 'Mandiri Tani POS'],
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          helper,
+          '-Printer',
+          printer,
+          '-JobFile',
+          job,
+          '-DocName',
+          opts.docName ?? 'Mandiri Tani POS',
+        ],
         { windowsHide: true, timeout: opts.timeoutMs ?? 30_000, encoding: 'utf8' },
         (err, stdout, stderr) => {
           if (!err && /^OK \d+/m.test(stdout)) return resolve();

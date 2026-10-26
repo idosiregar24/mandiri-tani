@@ -9,7 +9,11 @@ export default tseslint.config(
   {
     files: ['src/renderer/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // The shadcn CLI misreads the `@/lib/utils` alias and imports the unrelated npm package `cn`.
+      'no-restricted-imports': ['error', { paths: [{ name: 'cn', message: 'Use `cn` from "@/lib/utils" (shadcn CLI bug).' }] }],
+    },
   },
   {
     files: ['scripts/**/*.mjs'],

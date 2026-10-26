@@ -33,7 +33,8 @@ function polaPage(w: EscpWriter, setup: PageSetup): void {
   w.line(tens).line(units);
   for (let i = 3; i <= setup.linesPerPage; i++) {
     let label = `baris ${String(i).padStart(2)}`;
-    if (i === 3) label = `baris  3  POLA POSISI - ${cols} kolom @ ${setup.cpi} cpi, ${setup.linesPerPage} baris/halaman`;
+    if (i === 3)
+      label = `baris  3  POLA POSISI - ${cols} kolom @ ${setup.cpi} cpi, ${setup.linesPerPage} baris/halaman`;
     if (i === setup.linesPerPage) label = `baris ${i}  TERAKHIR - perforasi harus tepat di bawah baris ini`;
     const text = `${fitLeft(label, cols - 1)}|`;
     if (i === setup.linesPerPage) w.text(text);
@@ -87,7 +88,16 @@ function fakturPage(w: EscpWriter, setup: PageSetup, now: Date): void {
 
   // Columns: No 2, Kode 14, Nama 30, Jml 6, Satuan 6, Harga 12, Pot% 5, Total 13 (+ spaces = 95).
   const row = (c: string[]) =>
-    [fitRight(c[0]!, 2), fitLeft(c[1]!, 14), fitLeft(c[2]!, 30), fitRight(c[3]!, 6), fitLeft(c[4]!, 6), fitRight(c[5]!, 12), fitRight(c[6]!, 5), fitRight(c[7]!, 13)].join(' ');
+    [
+      fitRight(c[0]!, 2),
+      fitLeft(c[1]!, 14),
+      fitLeft(c[2]!, 30),
+      fitRight(c[3]!, 6),
+      fitLeft(c[4]!, 6),
+      fitRight(c[5]!, 12),
+      fitRight(c[6]!, 5),
+      fitRight(c[7]!, 13),
+    ].join(' ');
   w.line(sep);
   w.line(row(['No', 'Kode Item', 'Nama Item', 'Jml', 'Satuan', 'Harga', 'Pot%', 'Total']));
   w.line(sep);

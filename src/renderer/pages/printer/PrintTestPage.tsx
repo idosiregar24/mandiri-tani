@@ -55,14 +55,14 @@ export function PrintTestPage() {
 
   if (!bridge) {
     return (
-      <main className="mx-auto max-w-3xl p-8">
+      <div className="max-w-3xl">
         <p className="text-lg">Uji cetak hanya tersedia di aplikasi desktop.</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <div className="max-w-3xl">
       <Link to="/" className="text-muted-foreground inline-flex items-center gap-2 text-base hover:underline">
         <ArrowLeft className="size-5" /> Kembali
       </Link>
@@ -114,7 +114,7 @@ export function PrintTestPage() {
             />
           </div>
         ))}
-    </main>
+    </div>
   );
 }
 

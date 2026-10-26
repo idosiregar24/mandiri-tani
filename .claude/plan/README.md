@@ -12,7 +12,7 @@ di depan, deskripsi huruf kecil dipisah tanda hubung (contoh:
 sprint memakai nomor sprint tempat fitur itu **utamanya** dibangun, dan
 menyebut sprint lain di dalamnya.
 
-**Status saat ini (2026-10-24):** belum ada kode aplikasi. Sudah ada:
+**Status saat ini (2026-10-26):** S1 selesai kecuali uji di Windows bersih (G2); S3 (master + impor iPOS) selesai, dikerjakan sebelum S2. Catatan lama (2026-10-24): Sudah ada:
 dokumen `.claude` (PRD, skema, rules, skills, plan) dan **alat uji cetak
 LX-310** (`tools/uji-cetak/`, Sprint 0) yang menunggu diuji di printer asli.
 Sprint 1 siap dimulai paralel.
@@ -27,10 +27,10 @@ pengembangan sekarang vs impor saat go-live — mulai S3).
 
 | Sprint | Milestone | Fokus | Status |
 |---|---|---|---|
-| [S0](sprint-0-uji-cetak-printer.md) | M0 Fondasi | **Uji cetak Epson LX-310 didahulukan** (permintaan owner): alat PowerShell RAW ESC/P, halaman pola/font/faktur, daftar cek hasil di printer asli | 🔶 Alat selesai, menunggu uji di printer |
-| [S1](sprint-1-fondasi-shell-postgresql.md) | M0 Fondasi | Scaffold Electron + Vite + React, PostgreSQL portable + `PgManager`, migration runner, Express skeleton, boot screen, shutdown, kerangka installer | ⏳ Belum mulai |
+| [S0](sprint-0-uji-cetak-printer.md) | M0 Fondasi | **Uji cetak Epson LX-310 didahulukan** (permintaan owner): alat PowerShell RAW ESC/P, halaman pola/font/faktur, daftar cek hasil di printer asli | 🔶 Cetak RAW LX-310 berhasil; uji cetak di aplikasi (2 printer) + simpan pengaturan selesai; menunggu baris/halaman, font & uji thermal |
+| [S1](sprint-1-fondasi-shell-postgresql.md) | M0 Fondasi | Scaffold Electron + Vite + React, PostgreSQL portable + `PgManager`, migration runner, Express skeleton, boot screen, shutdown, kerangka installer | 🔶 Installer dibuild & build terpaket teruji (boot 1,3 dtk, crash/kill, tutup normal); **menunggu owner:** install di Windows bersih + HP (G2), logoff & sleep (F2) |
 | S2 | M0 Fondasi | Auth (password/PIN, sesi), user & role, permission, audit log, settings, first-run wizard, app shell, penomoran dokumen | — |
-| S3 | M1 Master & Inventori | Produk multi-satuan (KG/ZAK), harga, kategori/merek, pelanggan & grup, supplier, gudang, metode bayar per rekening; **importer iPOS lingkup Master** | — |
+| [S3](sprint-3-master-data-impor-ipos.md) | M1 Master & Inventori | Produk multi-satuan (KG/ZAK), harga, kategori/merek, pelanggan & grup, supplier, gudang, metode bayar per rekening; **importer iPOS lingkup Master** — dikerjakan **sebelum S2** (keputusan owner) | ✅ 31/31 item, 112 tes hijau; impor backup asli cocok 1:1 (416 barang, 1.238 pelanggan, 37 supplier). **Menunggu owner:** coba alur impor → reset → impor ulang di aplikasi |
 | S4 | M1 Master & Inventori | `stockService.apply` (ledger + lock + HPP), **impor stok awal iPOS**, kartu stok (buku & fisik), penyesuaian, opname (desktop), stok menipis, cek konsistensi | — |
 | S5 | M2 POS Kasir | Layar kasir: cari/scan, keranjang, resolusi harga + ubah harga baris, ganti satuan, potongan nota nominal, shortcut, `useScanner` | — |
 | S6 | M2 POS Kasir | Shift, pembayaran tunai/transfer/QRIS, simpan transaksi, **cetak ESC/P ke Epson LX-310 (USB)**, cetak ulang, kas masuk/keluar → **transaksi KSR pertama end-to-end** | — |
@@ -74,6 +74,7 @@ Setelah v1.0: v1.x (Mode Terminal, auto-update, batch/kedaluwarsa) →
 | Tailwind / shadcn/ui | 4.3.3 / CLI terbaru (style new-york) | Tailwind v4 CSS-first; **CLI shadcn salah membaca alias `@/lib/utils` → menginstal paket npm `cn`** — sudah dicopot, import diperbaiki manual; cek setiap `shadcn add` |
 | TypeScript | **6.0.3** | TS 7 sudah rilis, tapi typescript-eslint 8.72 hanya mendukung < 6.1 |
 | Express / pg / Zod / pino | 5.3.0 / 8.23.1 / 4.6.7 / 10.4.0 | |
+| React Hook Form / @hookform/resolvers / TanStack Table | 7.91.0 / 5.9.1 / **8.21.3** | Dipasang S3. npm memberi TanStack Table **v9** (API berbeda) → dipin ke v8 sesuai frontend-standards §5 |
 | Vitest / ESLint | 5.0.5 / 10.13.0 | |
 | PostgreSQL portable | **18.4-1** (`resources/postgres/VERSION`) | Zip binaries EDB; 18.5 belum tersedia (403). PG 18: `uuidv7()` bawaan, locale `builtin C.UTF-8`. CDN EDB membatasi ±30 KB/s per koneksi → `scripts/lib/parallel-download.mjs` (16 koneksi, ±300 KB/s) |
 
