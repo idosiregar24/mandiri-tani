@@ -15,6 +15,7 @@ import { StockCardPage } from '@/pages/stock/StockCardPage';
 import { StockList } from '@/pages/stock/StockList';
 import { SupplierList } from '@/pages/suppliers/SupplierList';
 import { AppShell } from './AppShell';
+import { AuthGate } from './AuthGate';
 import { BootGate } from './BootGate';
 
 const queryClient = new QueryClient({
@@ -49,7 +50,9 @@ export function App() {
   return (
     <BootGate>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <AuthGate>
+          <RouterProvider router={router} />
+        </AuthGate>
       </QueryClientProvider>
     </BootGate>
   );

@@ -1,6 +1,7 @@
 // The only way the UI talks to the server (frontend-standards §2). Same origin in
 // production (served by the embedded server), Vite proxy in development.
 import { desktopBridge } from './desktop';
+import { sessionToken, useSessionStore } from './session';
 
 const BASE = '/api/v1';
 
@@ -27,28 +28,39 @@ export interface Page<T> {
   meta: { total: number; page: number; pageSize: number };
 }
 
-// Sprint-3 decision S3-1: until Sprint 2 logins, the desktop window authenticates with the
-// per-start local access key from the main process. Outside Electron there is none → 401.
-let token: Promise<string | null> | null = null;
-function accessToken(): Promise<string | null> {
-  token ??=
+// The per-start local access key from the main process (sprint-2 S2-1). It is NOT a login: it
+// only opens the pre-login routes (setup wizard, login screen) from this PC's own window.
+// Outside Electron there is none, so nobody can log in from a plain browser.
+let localKey: Promise<string | null> | null = null;
+function localAccessKey(): Promise<string | null> {
+  localKey ??=
     desktopBridge()
       ?.accessToken()
       .catch(() => null) ?? Promise.resolve(null);
-  return token;
+  return localKey;
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+interface SendOptions extends RequestInit {
+  /** Pre-login route: send the local access key instead of the session token. */
+  hub?: boolean;
+}
 
 async function send(
   method: Method,
   path: string,
   body?: unknown,
-  init?: RequestInit,
+  init?: SendOptions,
 ): Promise<{ res: Response; json: unknown }> {
-  const key = await accessToken();
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (key) headers.Authorization = `Bearer ${key}`;
+  const token = init?.hub ? null : sessionToken();
+  if (init?.hub) {
+    const key = await localAccessKey();
+    if (key) headers['X-Local-Access-Key'] = key;
+  } else if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   let res: Response;
   try {
@@ -68,12 +80,16 @@ async function send(
       json && typeof json === 'object' && 'error' in json
         ? (json as { error: { code: string; message: string; details?: unknown } }).error
         : { code: 'HTTP_ERROR', message: `Server menjawab ${res.status}.`, details: undefined };
+    // The session ended (idle timeout, logout elsewhere, user deactivated) → back to the login screen.
+    if (token && res.status === 401 && err.code === 'UNAUTHENTICATED') {
+      useSessionStore.getState().signOut('Sesi berakhir. Silakan masuk lagi.');
+    }
     throw new ApiError(res.status, err.code, err.message, err.details);
   }
   return { res, json };
 }
 
-export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiGet<T>(path: string, init?: SendOptions): Promise<T> {
   return ((await send('GET', path, undefined, init)).json as { data: T }).data;
 }
 
@@ -82,8 +98,9 @@ export async function apiGetPage<T>(path: string, init?: RequestInit): Promise<P
   return (await send('GET', path, undefined, init)).json as Page<T>;
 }
 
-export async function apiPost<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  return ((await send('POST', path, body, init)).json as { data: T }).data;
+export async function apiPost<T>(path: string, body: unknown, init?: SendOptions): Promise<T> {
+  // 204 No Content (e.g. /auth/logout) has no body.
+  return ((await send('POST', path, body, init)).json as { data: T } | null)?.data as T;
 }
 
 export async function apiPut<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {

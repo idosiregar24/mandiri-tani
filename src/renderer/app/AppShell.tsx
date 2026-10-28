@@ -1,11 +1,13 @@
 // Backoffice layout (design-standards §4): sidebar on the neutral canvas, content on a white
 // panel with a breadcrumb bar. "Modern simple" per the owner's reference designs (2026-10-26).
-import { CalendarDays, ChevronRight, Leaf } from 'lucide-react';
+import { CalendarDays, ChevronRight, Leaf, LogOut, UserRound } from 'lucide-react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
+import { Button } from '@/components/ui/button';
+import { useLogout } from '@/features/auth/api';
 import { useHealth, useMasterTotals } from '@/features/home/api';
 import { formatDate, formatNumber } from '@/lib/format';
 import { findNav, navFor } from '@/lib/navigation';
-import { useRole } from '@/lib/session';
+import { ROLE_LABELS, useRole, useSessionUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 export function AppShell() {
@@ -73,6 +75,7 @@ export function AppShell() {
           ))}
         </nav>
 
+        <UserCard />
         <SystemStatus />
       </aside>
 
@@ -102,6 +105,25 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+/** Who is logged in + Keluar (sprint-2 D4). Switching user = Keluar, then Masuk. */
+function UserCard() {
+  const user = useSessionUser();
+  const logout = useLogout();
+  if (!user) return null;
+  return (
+    <div className="mx-3 flex items-center gap-3 rounded-xl border bg-background p-3">
+      <UserRound className="text-tani-green-dark size-6 shrink-0" aria-hidden />
+      <div className="min-w-0 flex-1 leading-tight">
+        <p className="truncate font-medium">{user.fullName}</p>
+        <p className="text-muted-foreground text-sm">{ROLE_LABELS[user.role]}</p>
+      </div>
+      <Button variant="outline" className="h-11" onClick={() => logout.mutate()} disabled={logout.isPending}>
+        <LogOut /> Keluar
+      </Button>
     </div>
   );
 }
