@@ -4,9 +4,11 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
 import type { DbConfig, Pool } from './db/pool';
-import { authenticate } from './middleware/auth';
+import { rateLimit } from './lib/rate-limit';
+import { authenticate, requireLocalAccess } from './middleware/auth';
 import { errorHandler, notFound } from './middleware/error-handler';
 import { requestContext } from './middleware/request-id';
+import { authHubRoutes, authSessionRoutes } from './modules/auth/routes';
 import { customerRoutes } from './modules/customers/routes';
 import { healthRoutes } from './modules/health/routes';
 import { importRoutes } from './modules/imports/routes';
@@ -14,6 +16,7 @@ import type { ImportHooks } from './modules/imports/service';
 import { masterRoutes } from './modules/masters/routes';
 import { paymentMethodRoutes } from './modules/payment-methods/routes';
 import { productRoutes } from './modules/products/routes';
+import { setupRoutes } from './modules/setup/routes';
 import { stockRoutes } from './modules/stock/routes';
 import { supplierRoutes } from './modules/suppliers/routes';
 
@@ -21,7 +24,10 @@ export interface AppDeps {
   pool: Pool;
   logger: Logger;
   appVersion: string;
-  /** Sprint-3 decision S3-1: per-start key handed only to this PC's own window. No key = every API call is 401. */
+  /**
+   * Per-start key handed only to this PC's own window. It opens the pre-login routes (HUB_PATHS)
+   * and nothing else (sprint-2 S2-1). No key = nobody can log in.
+   */
   localAccessKey?: string;
   /** Temporary iPOS database restored by the main process (sprint-3 S3-3). */
   iposDb?: DbConfig;
@@ -30,6 +36,9 @@ export interface AppDeps {
   /** Built renderer (out/renderer). Served at / in production so UI and API share one origin (ADR-01). */
   staticDir?: string;
 }
+
+/** Routes the hub window calls before anyone has logged in. */
+const HUB_PATHS = ['/auth/login', '/auth/login-users', '/setup'];
 
 export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, hooks, staticDir }: AppDeps): Express {
   const app = express();
@@ -56,10 +65,18 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   );
   app.use(express.json({ limit: '2mb' }));
 
+  app.locals.pool = pool; // read by requirePermission() to use Owner-PIN grants
+
   const api = express.Router();
   api.use(healthRoutes({ pool, appVersion }));
-  // Everything below needs a credential — no exception for localhost/LAN (security-standards §1).
-  api.use(authenticate({ localAccessKey, hubDeviceId: hubDeviceIdLoader(pool) }));
+  // Before login: only from this PC's own window (local access key, sprint-2 S2-1).
+  api.use(HUB_PATHS, requireLocalAccess({ localAccessKey, hubDeviceId: hubDeviceIdLoader(pool) }));
+  api.use(authHubRoutes({ pool }));
+  api.use(setupRoutes({ pool }));
+  // Everything below needs a session token — no exception for localhost/LAN (security-standards §1).
+  api.use(authenticate({ pool }));
+  api.use(rateLimit({ limit: 600, windowMs: 60_000, key: (req) => `device:${req.ctx.deviceId}` }));
+  api.use(authSessionRoutes({ pool }));
   api.use(masterRoutes({ pool }));
   api.use(customerRoutes({ pool }));
   api.use(supplierRoutes({ pool }));

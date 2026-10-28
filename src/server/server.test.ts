@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { insertUser } from '../../test/api';
 import { createTestDatabase, type TestDatabase } from '../../test/pg';
 import { migrationsDir } from '../../test/paths';
 import { createServer, type PosServer } from './server';
 
 const logger = pino({ level: 'silent' });
 const KEY = 'test-local-access-key';
-const auth = { authorization: `Bearer ${KEY}` };
+let auth: { authorization: string };
 
 interface HealthBody {
   data: { version: string; db: { ok: boolean; version?: string } };
@@ -42,6 +43,19 @@ beforeAll(async () => {
   await server.migrate();
   const { port } = await server.start();
   base = `http://127.0.0.1:${port}/api/v1`;
+  await insertUser(server.pool, {
+    username: 'pemilik',
+    fullName: 'Pemilik',
+    role: 'OWNER',
+    password: null,
+    pin: '135790',
+  });
+  const res = await fetch(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-local-access-key': KEY },
+    body: JSON.stringify({ username: 'pemilik', method: 'PIN', secret: '135790' }),
+  });
+  auth = { authorization: `Bearer ${((await res.json()) as { data: { token: string } }).data.token}` };
 });
 
 afterAll(async () => {
@@ -70,12 +84,15 @@ describe('embedded API', () => {
     });
   });
 
-  it('requires the local access key for every API route except /health (no localhost exception)', async () => {
+  it('requires a session for every API route except /health (no localhost exception)', async () => {
     const none = await fetch(`${base}/units`);
     expect(none.status).toBe(401);
     expect(((await none.json()) as ErrorBody).error.code).toBe('UNAUTHENTICATED');
     const wrong = await fetch(`${base}/units`, { headers: { authorization: 'Bearer nope' } });
     expect(wrong.status).toBe(401);
+    // The local access key is not a user (sprint-2 S2-1): neither as bearer nor as its own header.
+    expect((await fetch(`${base}/units`, { headers: { authorization: `Bearer ${KEY}` } })).status).toBe(401);
+    expect((await fetch(`${base}/units`, { headers: { 'x-local-access-key': KEY } })).status).toBe(401);
     // Unknown routes are not revealed to unauthenticated callers either.
     expect((await fetch(`${base}/does-not-exist`)).status).toBe(401);
     const ok = await fetch(`${base}/units`, { headers: auth });
