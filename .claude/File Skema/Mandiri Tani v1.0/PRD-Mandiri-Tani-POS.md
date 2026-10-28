@@ -902,12 +902,12 @@ Contoh Urea (satuan dasar KG):
 
 | Mutasi | Aturan lapisan |
 |---|---|
-| Penerimaan / faktur pembelian | Lapisan baru, harga = (total baris + alokasi ongkos) / base_qty |
+| Penerimaan / faktur pembelian | Lapisan baru, harga = (total baris + alokasi ongkos) / base_qty. **Default seperti iPOS** (Analisis §7): ongkos dibebankan ke HPP hanya bila dicentang per faktur (FR-PUR-05, default **tidak**); potongan nota beli **tidak** mengurangi HPP — menunggu konfirmasi owner (Q-RE-2) |
 | Penjualan dibawa langsung, **pengambilan barang** (`SALE_PICKUP`), retur beli, penyesuaian −, opname −, rakitan keluar | Habiskan lapisan tertua di gudang itu; `unit_cost` mutasi = rata-rata tertimbang lapisan yang terpakai. Retur beli menghabiskan lapisan **dari penerimaan asalnya** lebih dulu, baru FIFO |
 | Void, batal pengambilan, retur jual (restock) | Lapisan baru dengan **harga persis** dari pemakaian yang dibalik, `received_at` = tanggal lapisan asal (urutan FIFO terjaga) |
 | Mutasi antar gudang | Habiskan lapisan di gudang asal → lapisan baru di gudang tujuan dengan harga & tanggal yang sama |
 | Penyesuaian +, opname + | Lapisan baru seharga harga beli terakhir (`last_purchase_cost`) |
-| Saldo awal impor iPOS | **Salin lapisan FIFO iPOS** (`tbl_item_im` dengan sisa > 0) apa adanya → nilai persediaan sama persis dengan iPOS |
+| Saldo awal impor iPOS | **Salin lapisan FIFO iPOS** (`tbl_item_im` dengan sisa > 0) apa adanya → nilai persediaan sama persis dengan iPOS. Urutan iPOS = tanggal dokumen lapisan (`tanggal`, bukan `tgl_trs`); item ber-HPP LIFO di iPOS ikut menjadi FIFO (Q-RE-1) |
 | Barang belum diambil (reservasi) | **Belum** memakai lapisan; HPP ditetapkan saat diambil |
 
 **Stok minus** (dokumen sinkron / otorisasi Owner) — lapisan habis: kekurangan

@@ -60,7 +60,7 @@ pelanggan sengaja tidak disalin ke dokumen proyek.
 | Retur, rakitan, PO, deposit, transfer gudang | **Tidak pernah dipakai** |
 | Kas keluar | 498 transaksi, Rp 847 jt: biaya ekspedisi, bongkar muat, BBM & perbaikan mobil, upah |
 | Stok opname | 95 baris, per item ad-hoc (1–7 item per sesi) |
-| Metode HPP | **FIFO** (`METHOD_HPP = FIFO`). Nilai persediaan (lapisan FIFO) **Rp 1,79 miliar**, `tbl_itemstok` = Σ lapisan untuk 366/366 item |
+| Metode HPP | **FIFO** (`METHOD_HPP = FIFO`). Nilai persediaan (lapisan FIFO) **Rp 1,79 miliar**, `tbl_itemstok` = Σ lapisan untuk 366/366 item. Per item bisa beda (`tbl_item.hppsys`: 1 = FIFO 415 item, 2 = **LIFO 1 item**) — rincian urutan lapisan di §7 |
 | Jual saat stok habis | Diizinkan (`JUAL_STOK_HABIS = 1`), tapi saat ini tidak ada stok minus |
 | Akuntansi | iPOS membuat 50.435 baris jurnal otomatis — **tidak dimigrasi** (v1 tanpa buku besar) |
 
@@ -99,7 +99,7 @@ pelanggan sengaja tidak disalin ke dokumen proyek.
 | `tbl_imhd`/`tbl_imdt` (histori) | `purchase_invoices` `is_direct` | Diimpor; histori harga beli per supplier. Kredit → hanya yang dicentang Owner jadi `payables` (D-13) |
 | `tbl_byrpiutanghd/dt` | `receivable_payments` + alokasi | Diimpor (histori) |
 | `tbl_acckashd` KASO | `cash_transactions` | Diimpor; kategori dari kata kunci keterangan (EKSPEDISI, BONGKAR, MINYAK/MOBIL, UPAH, lain-lain) |
-| `tbl_formatnotr` (kantor UTM) | `doc_sequences` | `last_no` per tipe untuk tahun berjalan = `nomor` iPOS (mis. JL 1788, KSR 2060 per 2026-10-24) → nota pertama sistem baru melanjutkan nomor iPOS (Q-16) |
+| `tbl_formatnotr` (kantor UTM) | `doc_sequences` | `last_no` per tipe untuk tahun berjalan = `nomor` iPOS (mis. JL 1788, KSR 2060 per 2026-10-24) → nota pertama sistem baru melanjutkan nomor iPOS (Q-16). `nomor` bisa **negatif** (RB −2, BH −1 — iPOS mengurangi counter saat nota dihapus) → disimpan sebagai `max(0, nomor)` |
 | `tbl_conf` | `settings` | `DEF_JATUH_TEMPO` → `ar.default_term_days = 10`; `JUAL_STOK_HABIS` → `stock.allow_negative` |
 | `tbl_user`, jurnal, log aktivitas, opname lama | — | **Tidak dimigrasi** |
 
@@ -143,3 +143,56 @@ dan setiap proses impor di `import_batches` (nama file, SHA-256, ringkasan, pela
 | D-12 | Dua role v1: **KASIR** & **OWNER**; aksi sensitif kasir lewat PIN Owner | Keputusan owner; iPOS hanya 1 akun ADMIN |
 | D-13 | Hutang supplier: Owner **mencentang** dari 49 faktur kredit iPOS mana yang belum lunas (25 di antaranya dari Nov–Des 2025, kemungkinan besar sudah dibayar di luar iPOS) | DQ-11 |
 | D-14 | Histori 2 tahun **diimpor** | Keputusan owner |
+
+## 7. Cara kerja iPOS dari aplikasinya (reverse engineering, 2026-10-28)
+
+Dicek dengan [rea](https://github.com/morluto/rea) pada iPOS 5.0.7 yang
+terpasang (`C:\Program Files (x86)\Inspirasibiz\iPos 5.0 Profesional`).
+
+**Program tidak bisa dibaca langsung.** `iPos5p.exe` adalah .NET Framework 4
+(1.031 kelas, 16.942 method), tetapi diobfuscate: nama kelas/method/resource
+diacak dan string (termasuk SQL) dienkripsi. `update/*.i5up` (skrip upgrade
+DB) juga terenkripsi. Proteksi itu **sengaja tidak dibongkar**. Sumber yang
+dipakai: struktur & tabel konfigurasi di backup `.i5bu`, manual resmi
+`Help_iPos5.chm`, template cetak `Report/**/*.repx|*.fr3` (hanya binding
+kolom, tanpa SQL). Backup memuat 6 trigger (mis. `trg_update_hpp` pada
+`tbl_item_im.hargadasar`, `*_update_notrs`) tetapi **tanpa isi fungsinya**.
+
+**Penomoran** (`tbl_formatnotr`, cocok dengan `numbering.ts`): slot
+`[CNT] / tipe / [DEPT] / [BLNTHN]`, `resetid = YY` (reset tahunan), 7 digit
+untuk JL/KSR/BL, 4 digit sisanya. Kas masuk memakai kode `KSIN`.
+
+**HPP FIFO** — diuji pada salinan sementara tabel stok saja (1.138 lapisan
+`tbl_item_im`, 15.513 baris keluar `tbl_item_ik`):
+
+| Hal | Temuan |
+|---|---|
+| Sumber lapisan | `BL` pembelian 835, `SA` saldo awal 264, `OP` opname lebih 39 |
+| Pemakai lapisan | `KSR` 8.148 baris, `JL` 7.294, `OP` opname kurang 71 |
+| Urutan lapisan | Menurut **tanggal dokumen** lapisan (`tbl_item_im.tanggal`). Tidak ada baris keluar yang memakai lapisan bertanggal sesudah penjualannya; baris jual yang memakai beberapa lapisan selalu tertua dulu (418/418). Sama dengan `stock_cost_layers ORDER BY received_at, id` |
+| Harga keluar | Selalu = harga lapisan (`hargadasar`), tanpa rata-rata |
+| Konsistensi | `sisa = masuk − keluar` di semua lapisan; `keluar` = Σ baris keluar per lapisan; tidak ada lapisan atau saldo minus **pada saat backup** (baris jual tanpa lapisan dari masa lalu: DQ-3) |
+| Penghitungan ulang mundur | **Tidak.** 806 baris keluar (47 item) memakai lapisan lebih tua sesudah lapisan lebih baru terpakai — pembelian bertanggal mundur dipakai penjualan berikutnya, penjualan lama tidak dialokasikan ulang (sesuai PRD §6.6) |
+| Lapisan bertanggal sama | 13 kasus; urutan pemecah seri iPOS **belum diketahui** (dampak kecil) |
+| `tgl_trs` | **Bukan** waktu input (lapisan SA bertanggal 2024-09-01 punya `tgl_trs` s/d 2026) — jangan dipakai importer |
+| Item LIFO | 1 item `hppsys = 2`, lapisannya memang habis dari yang terbaru. Sistem baru FIFO saja → HPP jual item itu sesudah go-live bisa beda dari iPOS (Q-RE-1) |
+
+**Setelan HPP pembelian** (`tbl_conf`): `TRS_IM_BIAYA_HPP = 0` (biaya/ongkos
+nota beli **tidak** masuk HPP), `TRS_IM_POT_HPP = 0` (potongan nota beli
+**tidak** mengurangi HPP), `PJKPPN_TO_HPP = 1` (PPN masukan masuk HPP;
+iPOS toko tidak memakai PPN). Dampak ke modul pembelian: PRD §6.6 (Q-RE-2).
+
+**Penjualan** (manual iPOS): *Penjualan* (JL) = backoffice, harga bisa
+ditawar, cetak kertas besar; *Kasir* (KSR) = cepat, struk kecil, F5 pending /
+F6 daftar pending, bayar kombinasi tunai/kartu/kredit. "Harga jual < harga
+pokok" hanya konfirmasi (setting). Laporan laba iPOS memakai kolom `total`,
+`pokok`, `laba`, `proclaba`, `procgpm`.
+
+| # | Pertanyaan ke owner |
+|---|---|
+| Q-RE-1 | Satu item ber-HPP LIFO di iPOS — sengaja? Di sistem baru otomatis FIFO |
+| Q-RE-2 | Tetap seperti iPOS: ongkos & potongan nota beli tidak mengubah HPP? |
+
+Yang belum terjawab dan butuh pengamatan langsung (log SQL di server
+PostgreSQL iPOS saat transaksi uji): urutan pemecah seri lapisan bertanggal
+sama, isi fungsi trigger iPOS. Ditunda sampai benar-benar dibutuhkan (S7/S8).

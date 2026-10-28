@@ -38,6 +38,7 @@ Mode Persiapan).
 - [ ] `npm run dev:import-ipos -- "<path ke .i5bu>"`: buat ulang DB dev → migrasi → impor (`purpose = DEVELOPMENT`) → cetak ringkasan rekonsiliasi. Bisa diulang kapan saja.
 - [ ] Test otomatis **tidak** memakai backup asli. Fixture `test/fixtures/ipos-mini.sql`: subset DDL tabel iPOS yang dipakai importer (`tbl_item`, `tbl_itemsatuanjml`, `tbl_itemhj`, `tbl_itemstok`, `tbl_item_im`, `tbl_supel`, `tbl_supelgrup`, `tbl_ikhd`, `tbl_ikdt`, `tbl_byrpiutangdt`, `tbl_conf`, …) + baris **fiktif** yang meniru kasus nyata (KG/ZAK×50, nota tunai+kredit, pelunasan multi-nota, item tanpa HPP, pelanggan duplikat).
 - [ ] **Sidik struktur** (FR-MIG-09): sebelum transformasi, importer memeriksa tabel & kolom wajib di `ipos_import`; bila backup dari versi iPOS berbeda dan kolom hilang/berubah → berhenti dengan daftar perbedaan yang jelas, bukan impor setengah jadi.
+- [ ] Penomoran: `tbl_formatnotr` (UTM) → `doc_sequences` dengan `last_no = max(0, nomor)` — iPOS menyimpan counter negatif (RB −2, BH −1; Analisis §7). Test fixture memuat satu counter negatif.
 - [ ] Ringkasan rekonsiliasi dibandingkan dengan angka di Analisis §2 (416 item, 1.238 pelanggan, 308 nota piutang Rp 2,62 M, nilai stok Rp 1,79 M) — dipakai sebagai sanity check developer.
 
 ## 4. Gladi (minimal 1×, 1–2 minggu sebelum go-live)
