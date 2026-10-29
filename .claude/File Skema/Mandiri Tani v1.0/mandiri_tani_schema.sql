@@ -979,6 +979,7 @@ CREATE TABLE purchase_invoices (
   is_direct            boolean NOT NULL DEFAULT false,   -- faktur langsung (FR-PUR-04)
   status               text NOT NULL DEFAULT 'POSTED' CHECK (status IN ('POSTED','VOIDED')),
   note                 text,
+  client_op_id         uuid UNIQUE,                      -- idempotensi (Idempotency-Key)
   created_by           uuid NOT NULL REFERENCES users(id),
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now()
@@ -1008,6 +1009,7 @@ CREATE TABLE purchase_returns (
   settlement           text NOT NULL CHECK (settlement IN ('REDUCE_PAYABLE','CASH_REFUND')),
   total                numeric(18,2) NOT NULL CHECK (total >= 0),   -- nilai harga beli
   reason               text NOT NULL,
+  client_op_id         uuid UNIQUE,                      -- idempotensi (Idempotency-Key)
   created_by           uuid NOT NULL REFERENCES users(id),
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now()

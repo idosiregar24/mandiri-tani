@@ -622,6 +622,9 @@ scan/cari yang **selalu kembali fokus** setelah setiap aksi.
 | F11 | Pengambilan Barang | Alt+N (di dialog bayar) | Barang diambil nanti |
 | Ctrl+Shift+L | Kunci layar (logout cepat) | Enter (di dialog bayar) | Selesaikan transaksi |
 | Ctrl+H | Ubah harga baris terpilih (sprint-5 S5-6; 54% baris KSR iPOS diubah harganya) | | |
+| Ctrl+M | Ganti mode Kasir (KSR) / Faktur (JL) | Ctrl+O | Ongkos angkut (faktur) |
+| Ctrl+D | Nota hari ini (cetak ulang, batal) | Alt+1…9 (di dialog bayar) | Pilih cara bayar |
+| Ctrl+B | Terima pembayaran piutang (sprint-9 B3) | | |
 
 ### 5.3b Terjual — Belum Diambil & Pengambilan Barang (FR-PKP) — D-5
 

@@ -119,6 +119,18 @@ sehingga `<Button>` default, focus ring, dsb. otomatis sesuai brand.
 
 ## 3. Layar kasir (POS)
 
+**Gaya "modern minimalis" (referensi owner 2026-10-29, form booking dua kolom):**
+
+- Kiri = **satu kartu putih** (`rounded-lg border shadow-xs`) berisi bagian-bagian dengan judul
+  kecil tebal (`Section`), dipisah **pita kanvas tipis** (`h-2 bg-canvas`); judul kartu `← Kasir`.
+- Pilihan = **chip**: terpilih terisi `bg-primary text-primary-foreground`, lainnya bergaris tepi
+  (mode Kasir/Faktur, cara bayar, satuan).
+- Kanan = **kartu ringkasan**: label kecil abu-abu di atas nilai tebal, tautan hijau kecil
+  "Ganti"/"Ubah" di kanan, pill status hijau (grup pelanggan), **pita bawah `bg-surface-muted`**
+  berisi Total + **satu tombol utama selebar kartu** (Bayar F9).
+- Di bawahnya kartu kecil **"Butuh bantuan?"** (tombol pintas F1, cetak ulang, status server,
+  kunci) — pengganti status bar.
+- Dialog mengikuti pola yang sama (pilihan chip di kiri, ringkasan + tombol utama di kanan).
 - **Kepadatan & ukuran:** baris keranjang tinggi ≥ 44 px, font baris ≥ 16 px;
   **total** di panel kanan ≥ 48 px tebal (`tabular-nums`), terbaca dari 1,5 m.
 - Semua angka uang & qty `tabular-nums` dan rata kanan.
