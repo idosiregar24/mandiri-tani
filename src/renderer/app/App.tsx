@@ -4,6 +4,7 @@ import { CustomerList } from '@/pages/customers/CustomerList';
 import { HomePage } from '@/pages/home/HomePage';
 import { IposImportPage } from '@/pages/imports/IposImportPage';
 import { MasterDataPage } from '@/pages/masters/MasterDataPage';
+import { PosScreen } from '@/pages/pos/PosScreen';
 import { PrintTestPage } from '@/pages/printer/PrintTestPage';
 import { ProductForm } from '@/pages/products/ProductForm';
 import { ProductList } from '@/pages/products/ProductList';
@@ -14,6 +15,7 @@ import { OpnamePage } from '@/pages/stock/OpnamePage';
 import { StockCardPage } from '@/pages/stock/StockCardPage';
 import { StockList } from '@/pages/stock/StockList';
 import { SupplierList } from '@/pages/suppliers/SupplierList';
+import { useSessionStore } from '@/lib/session';
 import { AppShell } from './AppShell';
 import { AuthGate } from './AuthGate';
 import { BootGate } from './BootGate';
@@ -23,6 +25,8 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
+  // Full screen, no sidebar (design-standards §4).
+  { path: '/kasir', element: <PosScreen /> },
   {
     element: <AppShell />,
     children: [
@@ -45,6 +49,14 @@ const router = createBrowserRouter([
     ],
   },
 ]);
+
+// A cashier lands on the cashier screen right after logging in (sprint-5 S5-5); the "Menu"
+// button still opens the back office afterwards.
+useSessionStore.subscribe((now, before) => {
+  if (now.session && now.session.token !== before.session?.token && now.session.user.role === 'KASIR') {
+    void router.navigate('/kasir', { replace: true });
+  }
+});
 
 export function App() {
   return (

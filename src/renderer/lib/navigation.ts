@@ -41,7 +41,7 @@ export const NAV: NavGroup[] = [
   {
     label: 'Penjualan',
     items: [
-      { label: 'Kasir', to: '/kasir', icon: ShoppingCart, permission: 'sales.create', soon: true },
+      { label: 'Kasir', to: '/kasir', icon: ShoppingCart, permission: 'sales.create' },
       { label: 'Pelanggan', to: '/pelanggan', icon: Users, permission: 'customers.read', count: 'customers' },
     ],
   },
