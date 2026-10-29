@@ -4,8 +4,12 @@ import { CustomerList } from '@/pages/customers/CustomerList';
 import { HomePage } from '@/pages/home/HomePage';
 import { IposImportPage } from '@/pages/imports/IposImportPage';
 import { MasterDataPage } from '@/pages/masters/MasterDataPage';
+import { PickupScreen } from '@/pages/pickups/PickupScreen';
 import { PosScreen } from '@/pages/pos/PosScreen';
 import { PrintTestPage } from '@/pages/printer/PrintTestPage';
+import { AgingPage } from '@/pages/ar-ap/AgingPage';
+import { PurchaseForm } from '@/pages/purchases/PurchaseForm';
+import { PurchaseList } from '@/pages/purchases/PurchaseList';
 import { ProductForm } from '@/pages/products/ProductForm';
 import { ProductList } from '@/pages/products/ProductList';
 import { AdjustmentForm } from '@/pages/stock/AdjustmentForm';
@@ -27,6 +31,7 @@ const queryClient = new QueryClient({
 const router = createBrowserRouter([
   // Full screen, no sidebar (design-standards §4).
   { path: '/kasir', element: <PosScreen /> },
+  { path: '/pengambilan', element: <PickupScreen /> },
   {
     element: <AppShell />,
     children: [
@@ -42,6 +47,10 @@ const router = createBrowserRouter([
       { path: '/opname/:id', element: <OpnamePage /> },
       { path: '/pelanggan', element: <CustomerList /> },
       { path: '/supplier', element: <SupplierList /> },
+      { path: '/pembelian', element: <PurchaseList /> },
+      { path: '/pembelian/baru', element: <PurchaseForm /> },
+      { path: '/piutang', element: <AgingPage key="AR" side="AR" /> },
+      { path: '/hutang', element: <AgingPage key="AP" side="AP" /> },
       { path: '/data-lain', element: <MasterDataPage /> },
       { path: '/impor-ipos', element: <IposImportPage /> },
       { path: '/uji-cetak', element: <PrintTestPage /> },

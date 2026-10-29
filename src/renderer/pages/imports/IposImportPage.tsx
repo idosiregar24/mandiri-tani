@@ -1,18 +1,21 @@
-// "Impor iPOS" (Sprint 3 E8 + Sprint 4 C5, FR-MIG-01…04/08): 1) pilih file → 2) pratinjau & masalah
-// data → 3) impor master (+ rekonsiliasi) → 4) impor stok awal (+ rekonsiliasi) → Selesai.
+// "Impor iPOS" (Sprint 3 E8 + Sprint 4 C5 + Sprint 9 B4, FR-MIG-01…05/08): 1) pilih file → 2) pratinjau &
+// masalah data → 3) impor master (+ rekonsiliasi) → 4) impor stok awal (+ rekonsiliasi) → 5) piutang terbuka
+// & hutang yang dicentang (+ rekonsiliasi) → Selesai.
 // Reset data persiapan at the bottom. Owner only.
-import { CheckCircle2, FolderOpen, Loader2, PackageCheck, RotateCcw, Upload, XCircle } from 'lucide-react';
+import { CheckCircle2, FolderOpen, Loader2, PackageCheck, RotateCcw, Upload, Wallet, XCircle } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import {
   IMPORT_PURPOSES,
   type DataIssue,
   type ImportBatch,
   type ImportPurpose,
+  type IposArApInspectResult,
   type IposInspectResult,
   type IposStockInspectResult,
   type ReconciliationRow,
 } from '@shared/schemas/imports';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { MoneyInput } from '@/components/shared/MoneyInput';
 import { Notice } from '@/components/shared/Notice';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -22,9 +25,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
+  useCommitArAp,
   useCommitIpos,
   useCommitStock,
   useImportBatches,
+  useInspectArAp,
   useInspectIpos,
   useInspectStock,
   useResetPreparation,
@@ -66,12 +71,15 @@ export function IposImportPage() {
   const inspectStock = useInspectStock();
   const commit = useCommitIpos();
   const commitStock = useCommitStock();
+  const inspectArAp = useInspectArAp();
+  const commitArAp = useCommitArAp();
   const batches = useImportBatches();
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<{ message: string; detail?: string } | null>(null);
   const [purpose, setPurpose] = useState<ImportPurpose>('DEVELOPMENT');
   const [masterResult, setMasterResult] = useState<ImportBatch | null>(null);
   const [stockResult, setStockResult] = useState<ImportBatch | null>(null);
+  const [arApResult, setArApResult] = useState<ImportBatch | null>(null);
 
   if (!canImport) return <Notice tone="warning">Hanya Owner yang boleh mengimpor data dari iPOS.</Notice>;
 
@@ -79,10 +87,13 @@ export function IposImportPage() {
     setPickError(null);
     setMasterResult(null);
     setStockResult(null);
+    setArApResult(null);
     commit.reset();
     commitStock.reset();
+    commitArAp.reset();
     inspect.reset();
     inspectStock.reset();
+    inspectArAp.reset();
   };
 
   const choose = async () => {
@@ -95,6 +106,7 @@ export function IposImportPage() {
       if (r.status === 'RESTORED') {
         inspect.mutate();
         inspectStock.mutate();
+        inspectArAp.mutate();
       }
     } finally {
       setPicking(false);
@@ -108,8 +120,9 @@ export function IposImportPage() {
         onSuccess: (batch) => {
           setMasterResult(batch);
           inspect.reset();
-          // Stock is the next scope from the same file: refresh its preview (its blocker just changed).
+          // Stock and receivables are the next scopes from the same file: refresh their previews.
           inspectStock.mutate();
+          inspectArAp.mutate();
         },
       },
     );
@@ -121,7 +134,18 @@ export function IposImportPage() {
         onSuccess: (batch) => {
           setStockResult(batch);
           inspectStock.reset();
-          // Both scopes done — the temporary iPOS copy is no longer needed (FR-MIG-01).
+        },
+      },
+    );
+
+  const runArApImport = (payables: { legacyKey: string; amount: string }[]) =>
+    commitArAp.mutate(
+      { purpose, payables },
+      {
+        onSuccess: (batch) => {
+          setArApResult(batch);
+          inspectArAp.reset();
+          // Last scope done — the temporary iPOS copy is no longer needed (FR-MIG-01).
           void bridge?.cleanupIposImport();
         },
       },
@@ -134,13 +158,14 @@ export function IposImportPage() {
 
   const preview = inspect.data;
   const stockPreview = inspectStock.data;
-  const fileOpen = Boolean(preview || stockPreview || masterResult);
+  const arApPreview = inspectArAp.data;
+  const fileOpen = Boolean(preview || stockPreview || arApPreview || masterResult);
   const done = scopesDone(batches.data ?? []);
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Impor dari iPOS"
-        description="Pindahkan data master (barang, harga, pelanggan, supplier, rekening) lalu stok awal dari backup iPOS 5."
+        description="Pindahkan data master (barang, harga, pelanggan, supplier, rekening), stok awal, lalu piutang & hutang dari backup iPOS 5."
       />
 
       {!bridge && <Notice tone="warning">Impor hanya bisa dijalankan dari aplikasi di komputer toko.</Notice>}
@@ -153,7 +178,7 @@ export function IposImportPage() {
         </Notice>
       )}
 
-      <Step n={1} title="Pilih file backup iPOS" done={fileOpen || Boolean(stockResult)}>
+      <Step n={1} title="Pilih file backup iPOS" done={fileOpen || Boolean(arApResult)}>
         <p className="text-muted-foreground text-base">
           Buka iPOS → Backup Database, lalu pilih file <span className="font-mono">.i5bu</span> hasilnya. File hanya
           dibaca, tidak diubah dan tidak dikirim ke mana pun.
@@ -163,12 +188,19 @@ export function IposImportPage() {
             size="lg"
             className="h-12 text-base"
             onClick={() => void choose()}
-            disabled={!bridge || picking || inspect.isPending || commit.isPending || commitStock.isPending}
+            disabled={
+              !bridge ||
+              picking ||
+              inspect.isPending ||
+              commit.isPending ||
+              commitStock.isPending ||
+              commitArAp.isPending
+            }
           >
             {picking || inspect.isPending ? <Loader2 className="animate-spin" /> : <FolderOpen />}
             {picking ? 'Membuka backup…' : inspect.isPending ? 'Memeriksa isi backup…' : 'Pilih File Backup'}
           </Button>
-          {fileOpen && !stockResult && (
+          {fileOpen && !arApResult && (
             <Button variant="outline" size="lg" className="h-12 text-base" onClick={finish}>
               Selesai &amp; tutup file
             </Button>
@@ -209,6 +241,12 @@ export function IposImportPage() {
       )}
       {commitStock.isError && <Notice tone="error">{commitStock.error.message}</Notice>}
       {stockResult && <Reconciliation n={4} title="Stok awal masuk — cocokkan dengan iPOS" batch={stockResult} />}
+
+      {arApPreview && (
+        <ArApStep preview={arApPreview} purpose={purpose} onImport={runArApImport} importing={commitArAp.isPending} />
+      )}
+      {commitArAp.isError && <Notice tone="error">{commitArAp.error.message}</Notice>}
+      {arApResult && <Reconciliation n={6} title="Piutang & hutang masuk — cocokkan dengan iPOS" batch={arApResult} />}
 
       <History batches={batches.data ?? []} />
 
@@ -300,17 +338,150 @@ function StockStep({
   );
 }
 
+/**
+ * Step 5 (FR-MIG-05): every open iPOS credit note comes over by itself; supplier debts only for the
+ * invoices the Owner ticks — iPOS never recorded a supplier payment, so many of them are long paid.
+ */
+function ArApStep({
+  preview,
+  purpose,
+  onImport,
+  importing,
+}: {
+  preview: IposArApInspectResult;
+  purpose: ImportPurpose;
+  onImport: (payables: { legacyKey: string; amount: string }[]) => void;
+  importing: boolean;
+}) {
+  const [ticked, setTicked] = useState<Record<string, string>>({});
+  const c = preview.counts;
+  const date = (d: string) => d.split('-').reverse().join('/');
+  const picked = Object.entries(ticked).map(([legacyKey, amount]) => ({ legacyKey, amount }));
+  const valid = picked.every((p) => p.amount !== '' && p.amount !== '0');
+  const toggle = (legacyKey: string, open: string) =>
+    setTicked((t) => {
+      const next = { ...t };
+      if (legacyKey in next) delete next[legacyKey];
+      else next[legacyKey] = open.replace(/\.00$/, '');
+      return next;
+    });
+  return (
+    <Step n={5} title="Impor piutang & hutang">
+      <p className="text-muted-foreground text-base">
+        Semua nota penjualan yang belum lunas di iPOS masuk sebagai piutang dengan nomor, tanggal, dan jatuh tempo
+        aslinya. Hutang supplier: centang hanya faktur yang <strong>benar-benar belum dibayar</strong>.
+      </p>
+      {preview.fingerprint.length > 0 && (
+        <Notice tone="error" title="Struktur tabel piutang/hutang tidak cocok — impor dihentikan" className="mt-4">
+          {preview.fingerprint
+            .map((f) => `${f.table}${f.missingColumns.length ? ` (${f.missingColumns.join(', ')})` : ''}`)
+            .join(' · ')}
+        </Notice>
+      )}
+      {c && (
+        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            ['Nota piutang terbuka', formatNumber(String(c.receivables))],
+            ['Total sisa piutang', formatRupiah(c.receivablesOpen)],
+            ['Pelanggan berpiutang', formatNumber(String(c.customers))],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-surface-muted rounded-lg border p-3">
+              <dt className="text-muted-foreground text-sm">{label}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <Issues issues={preview.issues} />
+      {preview.payables.length > 0 && (
+        <div className="mt-5 space-y-2">
+          <h3 className="text-lg font-semibold">
+            Faktur pembelian kredit di iPOS ({formatNumber(String(preview.payables.length))})
+          </h3>
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-28">Belum lunas</TableHead>
+                  <TableHead>Faktur</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead className="text-right">Nilai di iPOS</TableHead>
+                  <TableHead className="w-48 text-right">Sisa hutang</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {preview.payables.map((p) => {
+                  const on = p.legacyKey in ticked;
+                  return (
+                    <TableRow key={p.legacyKey} className={cn(on && 'bg-tani-green-light')}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          aria-label={`Belum lunas ${p.legacyKey}`}
+                          className="accent-primary size-5"
+                          disabled={!p.supplierName}
+                          checked={on}
+                          onChange={() => toggle(p.legacyKey, p.open)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-mono">{p.legacyKey}</p>
+                        <p className="text-muted-foreground text-sm">
+                          {date(p.docDate)} · jatuh tempo {date(p.dueDate)}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        {p.supplierName ?? <span className="text-error-ink">{p.supplierCode} (tidak ada)</span>}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatRupiah(p.open)}</TableCell>
+                      <TableCell>
+                        {on && (
+                          <MoneyInput
+                            value={ticked[p.legacyKey]!}
+                            onChange={(v) => setTicked((t) => ({ ...t, [p.legacyKey]: v }))}
+                            className="h-10"
+                            aria-label={`Sisa hutang ${p.legacyKey}`}
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            {formatNumber(String(picked.length))} faktur dicentang. Faktur lain dianggap sudah lunas. Hutang di luar
+            iPOS bisa dicatat nanti di menu Hutang → Hutang manual.
+          </p>
+        </div>
+      )}
+      <div className="mt-5">
+        {preview.blocker ? (
+          <Notice tone="warning">{preview.blocker}</Notice>
+        ) : (
+          <Button size="lg" className="h-12 text-base" onClick={() => onImport(picked)} disabled={importing || !valid}>
+            {importing ? <Loader2 className="animate-spin" /> : <Wallet />} Impor Piutang &amp; Hutang (
+            {PURPOSE_LABELS[purpose]})
+          </Button>
+        )}
+      </div>
+    </Step>
+  );
+}
+
 /** Which scopes are already in the app (latest COMMITTED batch per scope). */
-function scopesDone(batches: ImportBatch[]): { master: ImportBatch | null; stock: ImportBatch | null } {
-  const find = (scope: 'master' | 'stock') =>
+function scopesDone(batches: ImportBatch[]): Record<'master' | 'stock' | 'receivables', ImportBatch | null> {
+  const find = (scope: 'master' | 'stock' | 'receivables') =>
     batches.find((b) => b.status === 'COMMITTED' && b.scope.includes(scope)) ?? null;
-  return { master: find('master'), stock: find('stock') };
+  return { master: find('master'), stock: find('stock'), receivables: find('receivables') };
 }
 
 function ScopeStatus({ done }: { done: ReturnType<typeof scopesDone> }) {
   const rows = [
     { label: 'Data master', hint: 'barang, satuan, harga, pelanggan, supplier, rekening', batch: done.master },
     { label: 'Stok awal', hint: 'jumlah stok & lapisan HPP FIFO', batch: done.stock },
+    { label: 'Piutang & hutang', hint: 'nota belum lunas & hutang supplier yang dicentang', batch: done.receivables },
   ];
   return (
     <section className="divide-y rounded-xl border">

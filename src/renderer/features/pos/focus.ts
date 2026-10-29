@@ -7,9 +7,16 @@ export function registerScanBox(el: HTMLInputElement | null): void {
 
 export const isScanBox = (el: Element | null): boolean => el !== null && el === scanBox;
 
-/** Next frame, so it also works right after a dialog unmounts. */
+/**
+ * Next frame, so it also works right after a dialog unmounts. Never while another dialog is open:
+ * a closing dialog must not steal the focus of the one that replaced it (Bayar → Selesai,
+ * Riwayat → Batal).
+ */
 export function focusScan(): void {
-  requestAnimationFrame(() => scanBox?.focus());
+  requestAnimationFrame(() => {
+    if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
+    scanBox?.focus();
+  });
 }
 
 /** Short low tone for "barang tidak ditemukan" (design-standards §3); silent if audio is unavailable. */

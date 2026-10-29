@@ -22,7 +22,7 @@ import { formatNumber, formatQty, formatRupiah } from '@/lib/format';
 import { POS_HOTKEYS } from '@/lib/hotkeys';
 import { useDebouncedValue } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
-import { useCustomerSearch } from './api';
+import { useCustomerSearch, useLastPrices } from './api';
 import { focusScan } from './focus';
 import { unitOf, type CartCustomer, type CartLine } from './store';
 
@@ -119,14 +119,18 @@ export function QtyDialog({
 
 export function PriceDialog({
   line,
+  customer,
   onSave,
   onClose,
 }: {
   line: CartLine;
+  /** Named customer → their last prices for this unit (FR-POS-27). */
+  customer: CartCustomer | null;
   onSave: (price: string) => void;
   onClose: () => void;
 }) {
   const [price, setPrice] = useState(line.unitPrice);
+  const last = useLastPrices(customer?.id ?? null, line.unitId);
   const unit = unitOf(line);
   const ok = price !== '' && dec(price).gt(0);
   return (
@@ -154,12 +158,40 @@ export function PriceDialog({
             {line.listPrice ? formatRupiah(line.listPrice) : 'belum ada'}
           </span>
         </p>
+        {customer && (last.data?.length ?? 0) > 0 && (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-sm">Harga terakhir ke {customer.name} (klik untuk pakai)</p>
+            <div className="flex flex-wrap gap-2">
+              {last.data!.map((p) => (
+                <button
+                  key={p.saleId}
+                  type="button"
+                  onClick={() => setPrice(dec(p.unitPrice).toFixed())}
+                  className="hover:border-primary/60 rounded-md border px-3 py-1.5 text-left"
+                >
+                  <span className="block font-semibold tabular-nums">{formatRupiah(p.unitPrice)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {shortDate(p.trxAt)} · {formatNumber(p.qty)} {unit.unitCode.toLowerCase()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {price !== '' && !ok && <p className="text-error-ink">Isi harga lebih dari Rp 0.</p>}
         <Footer onClose={onClose} disabled={!ok} />
       </form>
     </PosDialog>
   );
 }
+
+const shortDate = (iso: string) =>
+  new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+  }).format(new Date(iso));
 
 // ------------------------------------------------------------------ unit (F4)
 
@@ -307,20 +339,30 @@ export function DiscountDialog({
 
 // ------------------------------------------------------------------ customer (F8)
 
-export function CustomerDialog({ onPick, onClose }: { onPick: (c: CartCustomer | null) => void; onClose: () => void }) {
+export function CustomerDialog({
+  onPick,
+  onClose,
+  title = 'Pilih pelanggan',
+  withWalkIn = true,
+}: {
+  onPick: (c: CartCustomer | null) => void;
+  onClose: () => void;
+  title?: string;
+  /** Row 0 "Umum" (walk-in) — off where a registered customer is required (receivable payment). */
+  withWalkIn?: boolean;
+}) {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const debounced = useDebouncedValue(q.trim(), 150);
   const found = useCustomerSearch(debounced, true);
   const rows = (found.data?.data ?? []).filter((c) => !c.isWalkIn && c.isActive);
-  // Row 0 is always "Umum" (walk-in).
   const options: (CartCustomer | null)[] = [
-    null,
+    ...(withWalkIn ? [null] : []),
     ...rows.map((c) => ({ id: c.id, name: c.name, groupId: c.customerGroupId, groupName: c.customerGroupName })),
   ];
   const phones = new Map(rows.map((c) => [c.id, c.phone]));
   return (
-    <PosDialog title="Pilih pelanggan" description="Ketik nama atau nomor HP." onClose={onClose} wide>
+    <PosDialog title={title} description="Ketik nama atau nomor HP." onClose={onClose} wide>
       <div className="relative">
         <Search
           className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2"
@@ -403,3 +445,46 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
 
 export const keyName = (combo: string) =>
   combo.replace('ArrowUp', '↑').replace('ArrowDown', '↓').replace('Delete', 'Del');
+
+// ------------------------------------------------------------------ shipping / other charges (Ctrl+O, FAKTUR)
+
+export function ChargesDialog({
+  amount,
+  note,
+  onSave,
+  onClose,
+}: {
+  amount: string;
+  note: string | null;
+  onSave: (amount: string, note: string | null) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(dec(amount).isZero() ? '' : amount);
+  const [text, setText] = useState(note ?? 'Ongkos angkut');
+  return (
+    <PosDialog
+      title="Ongkos angkut / biaya lain"
+      description="Ditambahkan ke total faktur dan tercetak."
+      onClose={onClose}
+    >
+      <form onSubmit={submitWith(() => onSave(value || '0', value ? text.trim() || null : null))} className="space-y-4">
+        <MoneyInput
+          autoFocus
+          value={value}
+          onChange={setValue}
+          onFocus={(e) => e.currentTarget.select()}
+          className={cn(bigInput, 'pl-12')}
+          aria-label="Ongkos"
+        />
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="h-11 text-base md:text-base"
+          aria-label="Keterangan"
+        />
+        <p className="text-muted-foreground">Kosongkan untuk menghapus ongkos.</p>
+        <Footer onClose={onClose} />
+      </form>
+    </PosDialog>
+  );
+}

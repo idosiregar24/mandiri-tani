@@ -61,7 +61,7 @@ export function ScanBox({ onAdd, onNotFound }: ScanBoxProps) {
   return (
     <div className="relative">
       <ScanBarcode
-        className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-6 -translate-y-1/2"
+        className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2"
         aria-hidden
       />
       <input
@@ -84,14 +84,14 @@ export function ScanBox({ onAdd, onNotFound }: ScanBoxProps) {
             setActive((i) => (e.key === 'ArrowDown' ? Math.min(results.length - 1, i + 1) : Math.max(0, i - 1)));
           }
         }}
-        placeholder="Scan barcode atau ketik nama barang…   (5* = jumlah 5)"
+        placeholder="Scan barcode atau ketik nama barang…"
         aria-label="Scan atau cari barang"
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
         autoComplete="off"
         spellCheck={false}
-        className="border-input bg-background focus-visible:ring-ring h-14 w-full rounded-xl border-2 pr-28 pl-14 text-lg outline-none focus-visible:ring-2"
+        className="border-input bg-background focus-visible:border-primary focus-visible:ring-ring/30 h-12 w-full rounded-md border pr-28 pl-12 text-lg outline-none focus-visible:ring-4"
       />
       <span className="text-muted-foreground absolute top-1/2 right-4 flex -translate-y-1/2 items-center gap-2 text-sm">
         {(busy || search.isFetching) && <Loader2 className="size-4 animate-spin" aria-label="Mencari" />}

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  CommitIposArApInput,
   CommitIposInput,
   ImportBatch,
+  IposArApInspectResult,
   IposInspectResult,
   IposStockInspectResult,
   ResetPreparationInput,
@@ -51,6 +53,20 @@ export function useCommitStock() {
   const refresh = useRefreshAll();
   return useMutation({
     mutationFn: (input: CommitIposInput) => apiPost<ImportBatch>('/imports/ipos/stock/commit', input),
+    onSuccess: () => void refresh(),
+  });
+}
+
+export function useInspectArAp() {
+  return useMutation({
+    mutationFn: () => apiPost<IposArApInspectResult>('/imports/ipos/receivables/inspect', {}),
+  });
+}
+
+export function useCommitArAp() {
+  const refresh = useRefreshAll();
+  return useMutation({
+    mutationFn: (input: CommitIposArApInput) => apiPost<ImportBatch>('/imports/ipos/receivables/commit', input),
     onSuccess: () => void refresh(),
   });
 }

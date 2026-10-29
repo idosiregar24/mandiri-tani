@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   Building2,
   FileInput,
+  HandCoins,
   Home,
   Landmark,
   type LucideIcon,
@@ -17,6 +18,7 @@ import {
   Users,
   Wallet,
   Warehouse,
+  PackageCheck,
 } from 'lucide-react';
 import { hasPermission, type Permission, type Role } from '@shared/permissions';
 
@@ -42,6 +44,7 @@ export const NAV: NavGroup[] = [
     label: 'Penjualan',
     items: [
       { label: 'Kasir', to: '/kasir', icon: ShoppingCart, permission: 'sales.create' },
+      { label: 'Pengambilan Barang', to: '/pengambilan', icon: PackageCheck, permission: 'pickups.read' },
       { label: 'Pelanggan', to: '/pelanggan', icon: Users, permission: 'customers.read', count: 'customers' },
     ],
   },
@@ -59,12 +62,16 @@ export const NAV: NavGroup[] = [
     label: 'Pembelian',
     items: [
       { label: 'Supplier', to: '/supplier', icon: Truck, permission: 'suppliers.read', count: 'suppliers' },
-      { label: 'Pembelian', to: '/pembelian', icon: Receipt, permission: 'purchases.read', soon: true },
+      { label: 'Pembelian', to: '/pembelian', icon: Receipt, permission: 'purchases.read' },
     ],
   },
   {
     label: 'Hutang/Piutang',
-    items: [{ label: 'Piutang', to: '/piutang', icon: Wallet, permission: 'ar.payment', soon: true }],
+    items: [
+      // KASIR collects at the counter (Ctrl+B); the list itself is backoffice (customers.write = Owner).
+      { label: 'Piutang', to: '/piutang', icon: Wallet, permission: 'customers.write' },
+      { label: 'Hutang', to: '/hutang', icon: HandCoins, permission: 'ap.payment' },
+    ],
   },
   {
     label: 'Keuangan & Laporan',

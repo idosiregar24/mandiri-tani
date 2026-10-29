@@ -31,7 +31,7 @@ export function PosCart({ onEdit }: { onEdit: (key: string, action: LineAction) 
 
   return (
     <table className="w-full border-collapse text-base">
-      <thead className="bg-surface-muted text-muted-foreground sticky top-0 z-10 text-sm">
+      <thead className="bg-background text-muted-foreground sticky top-0 z-10 border-b text-sm">
         <tr>
           <th className="w-12 px-3 py-2 text-left font-normal">No</th>
           <th className="px-3 py-2 text-left font-normal">Barang</th>

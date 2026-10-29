@@ -5,6 +5,7 @@ import { dec, toQty } from '@shared/money';
 import { discountForTarget, lineTotal, subtotal as sumLines } from '@shared/pos';
 import { resolvePrice, type PriceSource } from '@shared/pricing';
 import type { PosProduct, PosUnit } from '@shared/schemas/pos';
+import type { RecalledSale, SaleChannel } from '@shared/schemas/sales';
 
 export interface CartLine {
   key: string;
@@ -35,6 +36,13 @@ interface PosState {
   totalTarget: string | null;
   /** Key of the line just added or changed — briefly highlighted (design-standards §3). */
   flashKey: string | null;
+  /** D-1: KASIR = quick KSR receipt; FAKTUR = JL invoice (named customer, credit, shipping). */
+  channel: SaleChannel;
+  /** FAKTUR only: shipping / other charges (D-4). */
+  otherCharges: string;
+  otherChargesNote: string | null;
+  /** D-5: goods stay in the warehouse until a pickup note. */
+  pickupLater: boolean;
   addProduct: (product: PosProduct, unitId?: string, qty?: string) => string;
   setQty: (key: string, qty: string) => void;
   changeUnit: (key: string, unitId: string) => void;
@@ -44,6 +52,11 @@ interface PosState {
   moveSelection: (delta: 1 | -1) => void;
   setCustomer: (c: CartCustomer | null) => void;
   setTotalTarget: (target: string | null) => void;
+  setChannel: (channel: SaleChannel) => void;
+  setOtherCharges: (amount: string, note: string | null) => void;
+  setPickupLater: (on: boolean) => void;
+  /** F7: a held note back into the (empty) cart. */
+  loadRecalled: (r: RecalledSale) => void;
   clear: () => void;
 }
 
@@ -71,6 +84,10 @@ export const usePosStore = create<PosState>()((set, get) => ({
   customer: null,
   totalTarget: null,
   flashKey: null,
+  channel: 'KASIR',
+  otherCharges: '0',
+  otherChargesNote: null,
+  pickupLater: false,
 
   addProduct: (product, unitId, qty = '1') => {
     const unit = unitId ?? defaultUnit(product).id;
@@ -144,21 +161,72 @@ export const usePosStore = create<PosState>()((set, get) => ({
 
   setTotalTarget: (totalTarget) => set({ totalTarget }),
 
-  clear: () => set({ lines: [], selectedKey: null, customer: null, totalTarget: null, flashKey: null }),
+  setChannel: (channel) => set((s) => ({ channel, otherCharges: channel === 'KASIR' ? '0' : s.otherCharges })),
+  setOtherCharges: (otherCharges, otherChargesNote) => set({ otherCharges, otherChargesNote }),
+  setPickupLater: (pickupLater) => set({ pickupLater }),
+
+  // S7-2: a typed (MANUAL) price stays; list prices are resolved again (the master may have changed).
+  loadRecalled: (r) => {
+    const products = new Map(r.products.map((p) => [p.id, p]));
+    const groupId = r.customer.isWalkIn ? null : r.customer.groupId;
+    const lines: CartLine[] = [];
+    for (const l of r.lines) {
+      const product = [...products.values()].find((p) => p.units.some((u) => u.id === l.productUnitId));
+      if (!product) continue;
+      const base: CartLine = {
+        key: newKey(),
+        product,
+        unitId: l.productUnitId,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        listPrice: null,
+        priceSource: 'MANUAL',
+      };
+      lines.push(l.priceSource === 'MANUAL' ? priced(base, groupId, true) : priced(base, groupId, false));
+    }
+    const sub = sumLines(lines.filter((l) => l.unitPrice !== ''));
+    set({
+      lines,
+      selectedKey: lines.at(-1)?.key ?? null,
+      flashKey: null,
+      channel: r.channel,
+      customer: r.customer.isWalkIn
+        ? null
+        : { id: r.customer.id, name: r.customer.name, groupId: r.customer.groupId, groupName: r.customer.groupName },
+      totalTarget: dec(r.discountAmount).gt(0) ? dec(sub).minus(r.discountAmount).toFixed(2) : null,
+      otherCharges: r.otherCharges,
+      otherChargesNote: r.otherChargesNote,
+      pickupLater: false,
+    });
+  },
+
+  // The mode (Kasir / Faktur) stays for the next customer; everything else starts fresh.
+  clear: () =>
+    set({
+      lines: [],
+      selectedKey: null,
+      customer: null,
+      totalTarget: null,
+      flashKey: null,
+      otherCharges: '0',
+      otherChargesNote: null,
+      pickupLater: false,
+    }),
 }));
 
 // ------------------------------------------------------------------ derived values
 
 export const lineAmount = (l: CartLine): string | null => (l.unitPrice === '' ? null : lineTotal(l));
 
-export function cartTotals(lines: readonly CartLine[], totalTarget: string | null) {
+export function cartTotals(lines: readonly CartLine[], totalTarget: string | null, otherCharges = '0') {
   const priced = lines.filter((l) => l.unitPrice !== '');
   const sub = sumLines(priced);
   const discount = totalTarget === null ? '0.00' : (discountForTarget(sub, totalTarget) ?? '0.00');
   return {
     subtotal: sub,
     discount,
-    total: dec(sub).minus(discount).toFixed(2),
+    otherCharges: dec(otherCharges).toFixed(2),
+    total: dec(sub).minus(discount).plus(otherCharges).toFixed(2),
     missingPrice: lines.length - priced.length,
     itemCount: lines.length,
   };
