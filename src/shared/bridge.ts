@@ -1,7 +1,7 @@
 // The narrow API the preload script exposes as `window.pos` (security-standards §5).
 // Business data never goes through here — only lifecycle, app info and hardware.
 import type { LifecycleStatus } from './lifecycle';
-import type { PrinterInfo, PrinterSettings, PrintResult, PrintTestRequest } from './printing';
+import type { PrintDocument, PrinterInfo, PrinterSettings, PrintResult, PrintTestRequest } from './printing';
 
 export const IPC = {
   lifecycleGet: 'pos:lifecycle:get',
@@ -12,6 +12,7 @@ export const IPC = {
   appOpenLogs: 'pos:app:open-logs',
   printerList: 'pos:printer:list',
   printerTest: 'pos:printer:test',
+  printerDocument: 'pos:printer:document',
   printerSettingsGet: 'pos:printer:settings-get',
   printerSettingsSave: 'pos:printer:settings-save',
   importChooseIpos: 'pos:import:choose-ipos',
@@ -44,6 +45,8 @@ export interface PosBridge {
   openLogFolder(): Promise<void>;
   listPrinters(): Promise<PrinterInfo[]>;
   printTest(request: PrintTestRequest): Promise<PrintResult>;
+  /** Prints a receipt/faktur on the printer of its role — only after the API saved the document. */
+  printDocument(doc: PrintDocument): Promise<PrintResult>;
   getPrinterSettings(): Promise<PrinterSettings>;
   /** Saves this PC's printer settings; resolves with what was stored. */
   savePrinterSettings(settings: PrinterSettings): Promise<PrinterSettings>;

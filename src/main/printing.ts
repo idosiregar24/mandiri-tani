@@ -2,7 +2,14 @@
 // Two roles: faktur → Epson LX-310 (ESC/P), struk → thermal receipt printer (ESC/POS).
 import type { WebContents } from 'electron';
 import type { Logger } from 'pino';
-import { PrintTestRequest, type PrinterInfo, type PrintResult } from '@shared/printing';
+import {
+  PrintDocument,
+  PrintTestRequest,
+  type PrinterInfo,
+  type PrinterSettings,
+  type PrintResult,
+} from '@shared/printing';
+import { encodeDocument } from './hardware/document';
 import { buildStrukTestPages } from './hardware/struk-test-pages';
 import { buildTestPages } from './hardware/test-pages';
 import { listWindowsPrinters, RawPrintError, sendRaw } from './hardware/windows-raw';
@@ -85,6 +92,57 @@ export async function printTest(
   } catch (err) {
     const detail = err instanceof RawPrintError ? err.detail : String(err);
     logger.error({ printer: req.printer, page: req.page, detail }, 'test print failed');
+    return {
+      ok: false,
+      code: 'PRINT_FAILED',
+      message: err instanceof RawPrintError ? err.message : 'Gagal mencetak.',
+      detail,
+    };
+  }
+}
+
+/**
+ * Prints a document built by src/shared/receipts.ts on the printer configured for its role
+ * (sprint-6 B2). Called by the renderer only after the sale is committed; a failure is returned
+ * as data — the sale stays saved and the cashier can reprint.
+ */
+export async function printDocument(
+  contents: WebContents,
+  payload: unknown,
+  settings: PrinterSettings,
+  helperDir: string,
+  logger: Logger,
+): Promise<PrintResult> {
+  const parsed = PrintDocument.safeParse(payload);
+  if (!parsed.success) return { ok: false, code: 'INVALID_REQUEST', message: 'Dokumen cetak tidak valid.' };
+  const doc = parsed.data;
+  const printer = settings[doc.role].printer;
+  const roleName = doc.role === 'struk' ? 'struk (thermal)' : 'faktur (Epson LX-310)';
+  if (!printer) {
+    return {
+      ok: false,
+      code: 'PRINTER_NOT_SET',
+      message: `Printer ${roleName} belum diatur. Atur di menu Pengaturan › Uji Cetak.`,
+    };
+  }
+  const printers = await listPrinters(contents);
+  if (!printers.some((p) => p.name === printer)) {
+    return {
+      ok: false,
+      code: 'PRINTER_NOT_FOUND',
+      message: `Printer "${printer}" tidak ditemukan di Windows. Periksa kabel/daya printer.`,
+    };
+  }
+  const bytes = encodeDocument(doc, settings);
+  const started = Date.now();
+  try {
+    await sendRaw(printer, bytes, { helperDir, docName: doc.title });
+    const ms = Date.now() - started;
+    logger.info({ role: doc.role, title: doc.title, bytes: bytes.length, ms }, 'document printed');
+    return { ok: true, bytes: bytes.length, ms };
+  } catch (err) {
+    const detail = err instanceof RawPrintError ? err.detail : String(err);
+    logger.error({ role: doc.role, title: doc.title, detail }, 'document print failed');
     return {
       ok: false,
       code: 'PRINT_FAILED',

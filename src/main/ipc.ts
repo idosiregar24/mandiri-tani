@@ -9,7 +9,7 @@ import type { Lifecycle } from './lifecycle';
 import { SERVER_PORT } from './lifecycle';
 import type { AppPaths } from './paths';
 import { PgError } from './pg/PgManager';
-import { listPrinters, printTest } from './printing';
+import { listPrinters, printDocument, printTest } from './printing';
 import { isAllowedUrl } from './window';
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {
@@ -59,6 +59,17 @@ export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logge
   ipcMain.handle(IPC.printerTest, (event, payload: unknown) => {
     assertTrustedSender(event);
     return printTest(event.sender, payload, join(paths.dataDir, 'print'), logger.child({ component: 'printer' }));
+  });
+
+  ipcMain.handle(IPC.printerDocument, (event, payload: unknown) => {
+    assertTrustedSender(event);
+    return printDocument(
+      event.sender,
+      payload,
+      readConfig(paths.configFile).printers,
+      join(paths.dataDir, 'print'),
+      logger.child({ component: 'printer' }),
+    );
   });
 
   // Printer settings are per PC and only writable from this machine's own window (IPC),

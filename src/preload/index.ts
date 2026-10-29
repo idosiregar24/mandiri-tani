@@ -16,6 +16,7 @@ const bridge: PosBridge = {
   openLogFolder: () => ipcRenderer.invoke(IPC.appOpenLogs),
   listPrinters: () => ipcRenderer.invoke(IPC.printerList),
   printTest: (request) => ipcRenderer.invoke(IPC.printerTest, request),
+  printDocument: (doc) => ipcRenderer.invoke(IPC.printerDocument, doc),
   getPrinterSettings: () => ipcRenderer.invoke(IPC.printerSettingsGet),
   savePrinterSettings: (settings) => ipcRenderer.invoke(IPC.printerSettingsSave, settings),
   chooseIposBackup: () => ipcRenderer.invoke(IPC.importChooseIpos),

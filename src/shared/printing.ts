@@ -102,4 +102,27 @@ export function pickPrinter(list: PrinterInfo[], role: PrinterRole): PrinterInfo
 
 export type PrintResult =
   | { ok: true; bytes: number; ms: number }
-  | { ok: false; code: 'PRINTER_NOT_FOUND' | 'PRINT_FAILED' | 'INVALID_REQUEST'; message: string; detail?: string };
+  | {
+      ok: false;
+      code: 'PRINTER_NOT_FOUND' | 'PRINTER_NOT_SET' | 'PRINT_FAILED' | 'INVALID_REQUEST' | 'UNSUPPORTED';
+      message: string;
+      detail?: string;
+    };
+
+/** One printed line of a document (sprint-6 B1). The encoder maps the small style set to ESC/POS or ESC/P. */
+export const PrintLine = z.object({
+  text: z.string().max(240),
+  bold: z.boolean().optional(),
+  /** Double width + height (thermal: store name). */
+  size: z.literal(2).optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+});
+export type PrintLine = z.infer<typeof PrintLine>;
+
+/** A document the renderer asks main to print — after the sale is committed (golden rule 1). */
+export const PrintDocument = z.object({
+  role: z.enum(PRINTER_ROLES),
+  title: z.string().max(80),
+  pages: z.array(z.array(PrintLine).max(150)).min(1).max(30),
+});
+export type PrintDocument = z.infer<typeof PrintDocument>;
