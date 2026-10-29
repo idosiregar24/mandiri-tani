@@ -1,6 +1,7 @@
 // iPOS import contracts (PRD §5.9 FR-MIG, Sprint 3 E). Inputs are Zod schemas; outputs are
 // plain interfaces shared by the server and the "Impor iPOS" screen.
-import { z } from './common';
+import { dec } from '../money';
+import { Money, z } from './common';
 
 export const IMPORT_PURPOSES = ['DEVELOPMENT', 'REHEARSAL', 'GO_LIVE'] as const;
 export type ImportPurpose = (typeof IMPORT_PURPOSES)[number];
@@ -106,6 +107,50 @@ export interface IposStockInspectResult {
   blocker: string | null;
 }
 
+/** Open receivables & credit purchases scope (FR-MIG-02 "Piutang", FR-MIG-05), counted in iPOS. */
+export interface IposArApCounts {
+  /** JL notes with credit left (jmlkredit − krd_jml_byr − krd_jml_pot > 0). */
+  receivables: number;
+  receivablesOpen: string;
+  customers: number;
+  /** BL invoices with credit left — candidates only, the Owner ticks the real ones. */
+  payables: number;
+  payablesOpen: string;
+}
+
+/** One iPOS credit purchase the Owner confirms (or not) as still unpaid (FR-MIG-05). */
+export interface IposPayableCandidate {
+  legacyKey: string;
+  supplierCode: string;
+  supplierName: string | null;
+  docDate: string;
+  dueDate: string;
+  open: string;
+}
+
+export interface IposArApInspectResult {
+  source: IposSourceInfo;
+  fingerprint: FingerprintProblem[];
+  counts: IposArApCounts | null;
+  issues: DataIssue[];
+  payables: IposPayableCandidate[];
+  blocker: string | null;
+}
+
+export const CommitIposArApInput = CommitIposInput.extend({
+  /** Ticked invoices with what is really still owed (≤ iPOS open). Empty = no supplier debt. */
+  payables: z
+    .array(
+      z.object({
+        legacyKey: z.string().trim().min(1).max(50),
+        amount: Money.refine((v) => dec(v).gt(0), 'Sisa hutang harus lebih dari 0.'),
+      }),
+    )
+    .max(1000)
+    .default([]),
+});
+export type CommitIposArApInput = z.input<typeof CommitIposArApInput>;
+
 export interface ImportBatch {
   id: string;
   sourceFile: string;
@@ -116,7 +161,7 @@ export interface ImportBatch {
   status: 'RUNNING' | 'COMMITTED' | 'FAILED' | 'DISCARDED';
   startedAt: string;
   finishedAt: string | null;
-  counts: IposMasterCounts | IposStockCounts | null;
+  counts: IposMasterCounts | IposStockCounts | IposArApCounts | null;
   reconciliation: ReconciliationRow[];
   issues: DataIssue[];
   error: string | null;

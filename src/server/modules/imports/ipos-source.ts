@@ -335,3 +335,60 @@ export async function loadStockRows(db: Queryable): Promise<IposStockRows> {
     source: totals.rows[0]!,
   };
 }
+
+// ------------------------------------------------------------------ open receivables & payables (sprint-9 A7)
+const CREDIT_COLUMNS = [
+  'notransaksi',
+  'tanggal',
+  'tipe',
+  'kodesupel',
+  'jmlkredit',
+  'krd_jml_byr',
+  'krd_jml_pot',
+  'byr_krd_jt',
+];
+export const AR_AP_FINGERPRINT: Record<string, readonly string[]> = {
+  tbl_ikhd: CREDIT_COLUMNS,
+  tbl_imhd: CREDIT_COLUMNS,
+};
+
+/** A sales note (tbl_ikhd) or purchase invoice (tbl_imhd) with credit left. */
+export interface IposOpenCredit {
+  notransaksi: string;
+  kodesupel: string;
+  tanggal: string;
+  /** NULL when iPOS has no due date (byr_krd_jt). */
+  jatuhtempo: string | null;
+  open: string;
+}
+
+export interface IposArApRows {
+  receivables: IposOpenCredit[];
+  payables: IposOpenCredit[];
+  /** Totals counted in iPOS itself, for the reconciliation. */
+  source: { receivables: number; receivablesOpen: string; customers: number; payables: number; payablesOpen: string };
+}
+
+const openCredit = (table: 'tbl_ikhd' | 'tbl_imhd') => `
+  SELECT trim(notransaksi) AS notransaksi, trim(coalesce(kodesupel, '')) AS kodesupel, tanggal::date::text AS tanggal,
+         byr_krd_jt::date::text AS jatuhtempo,
+         round(jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0), 2)::text AS open
+  FROM ${table} WHERE jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) > 0
+  ORDER BY tanggal, notransaksi`;
+
+export async function loadArApRows(db: Queryable): Promise<IposArApRows> {
+  const [rec, pay, totals] = await Promise.all([
+    db.query<IposOpenCredit>(openCredit('tbl_ikhd')),
+    db.query<IposOpenCredit>(openCredit('tbl_imhd')),
+    db.query<IposArApRows['source']>(
+      `WITH r AS (SELECT kodesupel, jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) AS open FROM tbl_ikhd),
+            p AS (SELECT jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) AS open FROM tbl_imhd)
+       SELECT (SELECT count(*) FROM r WHERE open > 0)::int AS receivables,
+              (SELECT round(coalesce(sum(open), 0), 2)::text FROM r WHERE open > 0) AS "receivablesOpen",
+              (SELECT count(DISTINCT trim(kodesupel)) FROM r WHERE open > 0)::int AS customers,
+              (SELECT count(*) FROM p WHERE open > 0)::int AS payables,
+              (SELECT round(coalesce(sum(open), 0), 2)::text FROM p WHERE open > 0) AS "payablesOpen"`,
+    ),
+  ]);
+  return { receivables: rec.rows, payables: pay.rows, source: totals.rows[0]! };
+}

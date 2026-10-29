@@ -1,5 +1,5 @@
 // Small helpers shared by route handlers.
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Uuid } from '@shared/schemas/common';
 import { AppError } from './errors';
 
@@ -7,6 +7,15 @@ import { AppError } from './errors';
 export function parseId(value: unknown, what = 'Data'): string {
   const r = Uuid.safeParse(value);
   if (!r.success) throw new AppError('NOT_FOUND', `${what} tidak ditemukan.`, 404);
+  return r.data;
+}
+
+/** Idempotency-Key header (backend-standards §3) — must be a UUID when sent. */
+export function idempotencyKey(req: Request): string | null {
+  const raw = req.header('idempotency-key');
+  if (!raw) return null;
+  const r = Uuid.safeParse(raw);
+  if (!r.success) throw new AppError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key harus berupa UUID.', 400);
   return r.data;
 }
 

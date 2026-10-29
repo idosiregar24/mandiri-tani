@@ -50,7 +50,7 @@ export interface TestApi {
   close(): Promise<void>;
 }
 
-const logger = pino({ level: 'silent' });
+const logger = pino({ level: process.env.TEST_LOG ?? 'silent' });
 
 export interface TestApiOptions {
   /** Load test/fixtures/ipos-mini.sql into a second database, as if the main process had restored a backup. */

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { parseId } from '../../lib/http';
 import { requirePermission } from '../../middleware/auth';
+import * as arApImport from './arap-import';
 import * as service from './service';
 import * as stockImport from './stock-import';
 import type { ImportDeps } from './service';
@@ -21,6 +22,12 @@ export function importRoutes(deps: ImportDeps): Router {
   });
   router.post('/imports/ipos/stock/commit', ipos, async (req, res) => {
     res.status(201).json({ data: await stockImport.commitStock(deps, req.ctx, req.body) });
+  });
+  router.post('/imports/ipos/receivables/inspect', ipos, async (_req, res) => {
+    res.json({ data: await arApImport.inspectArAp(deps) });
+  });
+  router.post('/imports/ipos/receivables/commit', ipos, async (req, res) => {
+    res.status(201).json({ data: await arApImport.commitArAp(deps, req.ctx, req.body) });
   });
   router.get('/imports/batches', ipos, async (_req, res) => {
     res.json({ data: await service.listBatches(deps.pool) });

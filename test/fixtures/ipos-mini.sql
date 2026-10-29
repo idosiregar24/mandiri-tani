@@ -79,7 +79,7 @@ CREATE TABLE tbl_conf (confname varchar(50), confvalue varchar(255), confblob by
 INSERT INTO tbl_conf VALUES ('DEF_JATUH_TEMPO','10',NULL), ('METHOD_HPP','FIFO',NULL), ('JUAL_STOK_HABIS','1',NULL);
 
 -- Sales/purchase lines: only used to pick each item's usual sale/purchase unit (S3-7).
-CREATE TABLE tbl_ikhd (notransaksi varchar(50), kodekantor varchar(10), tanggal timestamp, tipe varchar(5), kodesupel varchar(30));
+CREATE TABLE tbl_ikhd (notransaksi varchar(50), kodekantor varchar(10), tanggal timestamp, tipe varchar(5), kodesupel varchar(30), jmlkredit numeric DEFAULT 0, krd_jml_byr numeric DEFAULT 0, krd_jml_pot numeric DEFAULT 0, byr_krd_jt timestamp);
 CREATE TABLE tbl_ikdt (iddetail varchar(50), notransaksi varchar(50), kodeitem varchar(50), jumlah numeric(18,3), satuan varchar(20), harga numeric(18,3));
 INSERT INTO tbl_ikhd VALUES
   ('0000001/KSR/UTM/0126','UTM','2026-01-05 09:00','KSR','UMUM'),
@@ -90,10 +90,20 @@ INSERT INTO tbl_ikdt VALUES
   ('s2','0000001/JL/UTM/0126','UREA CONTOH',10,'ZAK',630000),
   ('s3','0000002/JL/UTM/0126','UREA CONTOH',4,'ZAK',640000),
   ('s4','0000002/JL/UTM/0126','RACUN A',2,'BTL',85000);
-CREATE TABLE tbl_imhd (notransaksi varchar(50), kodekantor varchar(10), tanggal timestamp, tipe varchar(5), kodesupel varchar(30));
+CREATE TABLE tbl_imhd (notransaksi varchar(50), kodekantor varchar(10), tanggal timestamp, tipe varchar(5), kodesupel varchar(30), jmlkredit numeric DEFAULT 0, krd_jml_byr numeric DEFAULT 0, krd_jml_pot numeric DEFAULT 0, byr_krd_jt timestamp);
 CREATE TABLE tbl_imdt (iddetail varchar(50), notransaksi varchar(50), kodeitem varchar(50), jumlah numeric(18,3), satuan varchar(20), harga numeric(18,3));
 INSERT INTO tbl_imhd VALUES ('0000001/BL/UTM/0126','UTM','2026-01-02 08:00','BL','SP0001');
 INSERT INTO tbl_imdt VALUES ('b1','0000001/BL/UTM/0126','NPK CONTOH 16',100,'ZAK',520000);
+
+-- Credit left (Sprint 9): open = jmlkredit − krd_jml_byr − krd_jml_pot. Cases: partly paid with a
+-- deduction, fully paid (ignored), no due date, unknown customer; two open credit purchases.
+UPDATE tbl_ikhd SET jmlkredit = 6300000, krd_jml_byr = 1000000, krd_jml_pot = 300000, byr_krd_jt = '2026-01-16' WHERE notransaksi = '0000001/JL/UTM/0126';
+UPDATE tbl_ikhd SET jmlkredit = 2690000, krd_jml_byr = 2690000, byr_krd_jt = '2026-01-21' WHERE notransaksi = '0000002/JL/UTM/0126';
+INSERT INTO tbl_ikhd VALUES
+  ('0000003/JL/UTM/0226','UTM','2026-02-03 10:00','JL','PL0007',1500000,0,0,NULL),
+  ('0000004/JL/UTM/0226','UTM','2026-02-04 10:00','JL','PL0404',250000,0,0,'2026-02-14');
+UPDATE tbl_imhd SET jmlkredit = 52000000, byr_krd_jt = '2026-01-12' WHERE notransaksi = '0000001/BL/UTM/0126';
+INSERT INTO tbl_imhd VALUES ('0000002/BL/UTM/0226','UTM','2026-02-05 08:00','BL','CV KODE NAMA',3000000,0,0,'2026-03-07');
 
 -- Opening stock (Sprint 4). hargadasar is numeric(35,20) in iPOS. Cases: two FIFO layers (one with a
 -- 20-decimal cost), a fully used layer (sisa 0, ignored), another office (DEP, ignored), an item with

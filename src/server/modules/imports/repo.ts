@@ -292,7 +292,11 @@ export async function wipePreparationData(db: Queryable): Promise<number> {
     // TRUNCATE does not fire the row-level append-only triggers, so the stock ledger can be cleared here
     // — the only place that may, and only before go-live (checked by the caller). Sprint 4: stock tables;
     // doc_sequences restart too (go-live seeds them from iPOS).
-    `TRUNCATE stock_layer_consumptions, stock_cost_layers, stock_movements, stock_balances,
+    `TRUNCATE receivable_payment_allocations, receivable_payments, payable_payment_allocations, payable_payments,
+              sale_return_items, sale_returns, payables, purchase_return_items, purchase_returns, purchase_invoice_items,
+              purchase_invoices, goods_receipt_items, goods_receipts, purchase_order_items, purchase_orders,
+              cash_transactions, receivables, sale_pickup_items, sale_pickups, sale_payments, sale_items, sales, shifts,
+              stock_layer_consumptions, stock_cost_layers, stock_movements, stock_balances,
               stock_opname_lines, stock_opnames, stock_adjustment_lines, stock_adjustments, doc_sequences,
               product_prices, product_barcodes, product_components, product_units, products,
               customers, customer_groups, suppliers, payment_methods, cash_accounts, cash_categories,
@@ -304,13 +308,30 @@ export async function wipePreparationData(db: Queryable): Promise<number> {
 }
 
 // ------------------------------------------------------------------ opening stock (Sprint 4)
-export async function scopeState(db: Queryable): Promise<{ master: boolean; stock: boolean; movements: number }> {
-  const r = await db.query<{ master: boolean; stock: boolean; movements: number }>(
+export async function scopeState(
+  db: Queryable,
+): Promise<{ master: boolean; stock: boolean; receivables: boolean; movements: number }> {
+  const r = await db.query<{ master: boolean; stock: boolean; receivables: boolean; movements: number }>(
     `SELECT EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'master') AS master,
             EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'stock') AS stock,
+            EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'receivables') AS receivables,
             (SELECT count(*) FROM stock_movements)::int AS movements`,
   );
   return r.rows[0]!;
+}
+
+/** iPOS kodesupel → customer / supplier id, from the master import's legacy_refs. */
+export async function partyIdsByCode(
+  db: Queryable,
+  entity: 'customer' | 'supplier',
+): Promise<Map<string, { id: string; name: string }>> {
+  const table = entity === 'customer' ? 'customers' : 'suppliers';
+  const r = await db.query<{ legacy_key: string; id: string; name: string }>(
+    `SELECT r.legacy_key, c.id, c.name FROM legacy_refs r JOIN ${table} c ON c.id = r.entity_id AND c.deleted_at IS NULL
+     WHERE r.source_system = 'IPOS5' AND r.entity = $1`,
+    [entity],
+  );
+  return new Map(r.rows.map((x) => [x.legacy_key, { id: x.id, name: x.name }]));
 }
 
 /** iPOS kodeitem → product id, from the master import's legacy_refs. */

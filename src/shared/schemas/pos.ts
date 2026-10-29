@@ -1,9 +1,10 @@
 // Cashier screen lookups (sprint-5 S5-2). No cost/HPP field ever appears here (S5-4).
 import type { PriceRow } from '../pricing';
-import { z } from './common';
+import { Uuid, z } from './common';
 
 export const PosSearchQuery = z.object({ q: z.string().trim().min(1).max(100) });
 export const PosLookupQuery = z.object({ code: z.string().trim().min(1).max(100) });
+export const LastPriceQuery = z.object({ customerId: Uuid, productUnitId: Uuid });
 
 export interface PosUnit {
   /** product_units.id */

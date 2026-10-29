@@ -1,9 +1,8 @@
-import { Router, type Request } from 'express';
+import { Router } from 'express';
 import { StockCardQuery, StockListQuery } from '@shared/schemas/stock';
-import { Uuid, z } from '@shared/schemas/common';
+import { z } from '@shared/schemas/common';
 import type { Pool } from '../../db/pool';
-import { AppError } from '../../lib/errors';
-import { parseId } from '../../lib/http';
+import { idempotencyKey, parseId } from '../../lib/http';
 import { requirePermission } from '../../middleware/auth';
 import * as adjustments from './adjustments';
 import * as inventory from './inventory';
@@ -13,15 +12,6 @@ const PageQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
-
-/** Idempotency-Key header (backend-standards §3) — optional, but must be a UUID when sent. */
-function idempotencyKey(req: Request): string | null {
-  const raw = req.header('idempotency-key');
-  if (!raw) return null;
-  const r = Uuid.safeParse(raw);
-  if (!r.success) throw new AppError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key harus berupa UUID.', 400);
-  return r.data;
-}
 
 /** /stock/… — read: stock.read (KASIR too, without cost); adjustments: stock.adjust; opname: stock.opname. */
 export function stockRoutes({ pool }: { pool: Pool }): Router {

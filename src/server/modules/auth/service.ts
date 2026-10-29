@@ -1,6 +1,6 @@
 // Login, sessions and Owner-PIN authorization (FR-SYS-03, FR-POS-20; sprint-2 S2-2…S2-6).
 import { createHash, randomBytes } from 'node:crypto';
-import { hasPermission, OWNER_AUTHORIZABLE, type Permission } from '@shared/permissions';
+import { hasPermission, OWNER_AUTHORIZABLE, type Permission, type Role } from '@shared/permissions';
 import {
   AuthorizeInput,
   LoginInput,
@@ -11,7 +11,7 @@ import {
   type SessionUser,
 } from '@shared/schemas/auth';
 import { uuidv7 } from '@shared/uuid';
-import type { Pool } from '../../db/pool';
+import type { Pool, Queryable } from '../../db/pool';
 import { withClient, withTransaction } from '../../db/tx';
 import { recordAudit } from '../../lib/audit';
 import { clock } from '../../lib/clock';
@@ -291,4 +291,55 @@ export async function useGrant(
   if (!OWNER_AUTHORIZABLE.includes(need.permission)) throw invalid;
   if (!(await repo.consumeGrant(pool, g.id, now))) throw invalid;
   return g.grantedBy;
+}
+
+/**
+ * Owner approval decided INSIDE a document's transaction (sprint-6: below cost, discount over the
+ * cashier's limit, over the credit limit — known only while the sale is being built). One Owner
+ * PIN covers every permission the document needs; the grant is used up with `tx`, so it is only
+ * spent when the document commits. Returns the approver's id, or null when no approval is needed.
+ */
+export async function approveInTx(
+  tx: Queryable,
+  ctx: { role: Role; userId: string; deviceId: string },
+  needs: readonly Permission[],
+  grant: string | null,
+): Promise<string | null> {
+  const missing = [...new Set(needs)].filter((p) => !hasPermission(ctx.role, p));
+  if (missing.length === 0) return null;
+  if (missing.some((p) => !OWNER_AUTHORIZABLE.includes(p))) {
+    throw new AppError('FORBIDDEN', 'Anda tidak punya hak untuk aksi ini.', 403, { permission: missing[0] });
+  }
+  if (!grant) {
+    throw new AppError('AUTHORIZATION_REQUIRED', approvalMessage(missing), 423, {
+      permission: missing[0],
+      permissions: missing,
+    });
+  }
+  const now = clock.now();
+  const invalid = new AppError(
+    'AUTHORIZATION_INVALID',
+    'Otorisasi Owner sudah dipakai atau kedaluwarsa. Minta PIN Owner lagi.',
+    401,
+  );
+  const g = await repo.findGrant(tx, sha256(grant));
+  if (!g || g.usedAt || g.expiresAt <= now) throw invalid;
+  if (!missing.includes(g.permission as Permission) || g.requestedBy !== ctx.userId || g.deviceId !== ctx.deviceId) {
+    throw new AppError('FORBIDDEN', 'Otorisasi ini untuk aksi lain. Minta PIN Owner untuk aksi ini.', 403, {
+      permission: missing[0],
+    });
+  }
+  if (!(await repo.consumeGrant(tx, g.id, now))) throw invalid;
+  return g.grantedBy;
+}
+
+const APPROVAL_REASONS: Partial<Record<Permission, string>> = {
+  'sales.sell_below_cost': 'harga di bawah harga pokok',
+  'sales.discount.unlimited': 'potongan melebihi batas kasir',
+  'sales.credit.over_limit': 'piutang melewati limit pelanggan',
+};
+
+function approvalMessage(missing: Permission[]): string {
+  const why = missing.map((p) => APPROVAL_REASONS[p] ?? p).join(', ');
+  return `Butuh PIN Owner: ${why}.`;
 }

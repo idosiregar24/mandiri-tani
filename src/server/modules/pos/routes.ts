@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PosLookupQuery, PosSearchQuery } from '@shared/schemas/pos';
+import { LastPriceQuery, PosLookupQuery, PosSearchQuery } from '@shared/schemas/pos';
 import type { Pool } from '../../db/pool';
 import { AppError } from '../../lib/errors';
 import { requirePermission } from '../../middleware/auth';
@@ -29,6 +29,12 @@ export function posRoutes({ pool }: { pool: Pool }): Router {
       );
     }
     res.json({ data: hit });
+  });
+
+  // FR-POS-27: what this customer paid last time (Faktur price negotiation).
+  router.get('/pos/last-prices', read, async (req, res) => {
+    const q = LastPriceQuery.parse(req.query);
+    res.json({ data: await repo.lastPrices(pool, q.customerId, q.productUnitId) });
   });
 
   return router;

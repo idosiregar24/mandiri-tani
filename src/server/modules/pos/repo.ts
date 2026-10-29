@@ -1,5 +1,6 @@
 // Read-only lookups for the cashier screen (sprint-5 B1/B2). One query per keystroke/scan.
 import type { PosProduct } from '@shared/schemas/pos';
+import type { LastPrice } from '@shared/schemas/sales';
 import type { Queryable } from '../../db/pool';
 import { likePattern } from '../../lib/http';
 
@@ -80,4 +81,29 @@ export async function lookup(db: Queryable, code: string): Promise<{ product: Po
     [code],
   );
   return r.rows[0] ?? null;
+}
+
+/** Products by id in the cashier's shape (recalling a held note). */
+export async function productsByIds(db: Queryable, ids: string[]): Promise<PosProduct[]> {
+  if (!ids.length) return [];
+  const r = await db.query<{ product: PosProduct }>(
+    `SELECT ${PRODUCT_JSON} AS product FROM products p JOIN units bu ON bu.id = p.base_unit_id
+     WHERE p.id = ANY($1::uuid[]) AND p.deleted_at IS NULL`,
+    [ids],
+  );
+  return r.rows.map((x) => x.product);
+}
+
+/** FR-POS-27: last 3 prices a customer paid for one product unit (completed notes only). */
+export async function lastPrices(db: Queryable, customerId: string, productUnitId: string): Promise<LastPrice[]> {
+  const r = await db.query<LastPrice>(
+    `SELECT s.id AS "saleId", s.number, to_json(s.trx_at) #>> '{}' AS "trxAt",
+            trim_scale(i.qty)::text AS qty, i.unit_price::text AS "unitPrice"
+     FROM sale_items i JOIN sales s ON s.id = i.sale_id
+     WHERE s.customer_id = $1 AND i.product_unit_id = $2 AND s.status = 'COMPLETED'
+     ORDER BY s.trx_at DESC, i.line_no
+     LIMIT 3`,
+    [customerId, productUnitId],
+  );
+  return r.rows;
 }
