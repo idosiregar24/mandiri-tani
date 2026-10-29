@@ -621,6 +621,7 @@ scan/cari yang **selalu kembali fokus** setelah setiap aksi.
 | Ctrl+P | Cetak ulang struk terakhir | Ctrl+R | Retur penjualan |
 | F11 | Pengambilan Barang | Alt+N (di dialog bayar) | Barang diambil nanti |
 | Ctrl+Shift+L | Kunci layar (logout cepat) | Enter (di dialog bayar) | Selesaikan transaksi |
+| Ctrl+H | Ubah harga baris terpilih (sprint-5 S5-6; 54% baris KSR iPOS diubah harganya) | | |
 
 ### 5.3b Terjual — Belum Diambil & Pengambilan Barang (FR-PKP) — D-5
 
