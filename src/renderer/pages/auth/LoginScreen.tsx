@@ -78,6 +78,15 @@ export function LoginScreen() {
           />
         )}
       </div>
+
+      <div className="mt-4 text-center text-xs text-muted-foreground select-none">
+        <p className="font-medium text-foreground/80">
+          Dikembangkan oleh <span className="font-semibold text-foreground">Ido Refael Siregar</span>
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground/75 font-mono">
+          081363554262 &bull; idosiregar2006@gmail.com
+        </p>
+      </div>
     </Centered>
   );
 }
