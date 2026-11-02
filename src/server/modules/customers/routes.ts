@@ -13,6 +13,9 @@ export function customerRoutes({ pool }: { pool: Pool }): Router {
   router.get('/customers', requirePermission('customers.read'), async (req, res) => {
     sendPage(res, await service.list(pool, CustomerListQuery.parse(req.query)));
   });
+  router.get('/customers/summary', requirePermission('customers.read'), async (_req, res) => {
+    res.json({ data: await service.summary(pool) });
+  });
   router.get('/customers/:id', requirePermission('customers.read'), async (req, res) => {
     res.json({ data: await service.get(pool, parseId(req.params.id, 'Pelanggan')) });
   });

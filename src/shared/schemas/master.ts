@@ -115,6 +115,31 @@ export interface Customer {
   updatedAt: string;
 }
 
+export interface CustomerSummary {
+  total: number;
+  active: number;
+  inactive: number;
+  walkIn: number;
+  withCreditLimit: number;
+  cashOnly: number;
+  unlimitedCredit: number;
+  totalCreditLimit: string;
+  avgPaymentTermDays: number;
+  withPhone: number;
+  customersWithDebt: number;
+  totalDebtAmount: string;
+  groups: {
+    id: string;
+    label: string;
+    discountPercent: string;
+    count: number;
+  }[];
+  villages: {
+    village: string;
+    count: number;
+  }[];
+}
+
 export const SupplierInput = z.object({
   code: z
     .string()

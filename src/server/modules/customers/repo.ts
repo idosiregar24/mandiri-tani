@@ -1,5 +1,5 @@
 import { uuidv7 } from '@shared/uuid';
-import type { Customer } from '@shared/schemas/master';
+import type { Customer, CustomerSummary } from '@shared/schemas/master';
 import type { Queryable } from '../../db/pool';
 import { likePattern } from '../../lib/http';
 
@@ -115,4 +115,101 @@ export async function softDelete(db: Queryable, id: string): Promise<void> {
 export async function groupExists(db: Queryable, id: string): Promise<boolean> {
   const r = await db.query('SELECT 1 FROM customer_groups WHERE id = $1 AND deleted_at IS NULL', [id]);
   return (r.rowCount ?? 0) > 0;
+}
+
+export async function summary(db: Queryable): Promise<CustomerSummary> {
+  const counts = await db.query<{
+    total: number;
+    active: number;
+    inactive: number;
+    walkIn: number;
+    withCreditLimit: number;
+    cashOnly: number;
+    unlimitedCredit: number;
+    totalCreditLimit: string;
+    avgPaymentTermDays: number;
+    withPhone: number;
+  }>(`
+    SELECT
+      count(*)::int AS "total",
+      count(*) FILTER (WHERE is_active)::int AS "active",
+      count(*) FILTER (WHERE NOT is_active)::int AS "inactive",
+      count(*) FILTER (WHERE is_walk_in)::int AS "walkIn",
+      count(*) FILTER (WHERE credit_limit > 0)::int AS "withCreditLimit",
+      count(*) FILTER (WHERE credit_limit = 0)::int AS "cashOnly",
+      count(*) FILTER (WHERE credit_limit IS NULL AND NOT is_walk_in)::int AS "unlimitedCredit",
+      coalesce(sum(credit_limit) FILTER (WHERE credit_limit > 0), 0)::text AS "totalCreditLimit",
+      coalesce(round(avg(payment_term_days) FILTER (WHERE credit_limit > 0 OR credit_limit IS NULL)), 10)::int AS "avgPaymentTermDays",
+      count(*) FILTER (WHERE phone IS NOT NULL AND trim(phone) <> '')::int AS "withPhone"
+    FROM customers
+    WHERE deleted_at IS NULL
+  `);
+
+  const debts = await db.query<{
+    customersWithDebt: number;
+    totalDebtAmount: string;
+  }>(`
+    SELECT
+      count(DISTINCT customer_id)::int AS "customersWithDebt",
+      coalesce(sum(amount - paid_amount), 0)::text AS "totalDebtAmount"
+    FROM receivables
+    WHERE status IN ('OPEN', 'PARTIAL')
+  `);
+
+  const groups = await db.query<{
+    id: string;
+    label: string;
+    discountPercent: string;
+    count: number;
+  }>(`
+    SELECT
+      coalesce(g.id::text, 'none') AS id,
+      coalesce(g.name, 'Umum / Tanpa Grup') AS label,
+      coalesce(g.discount_percent::text, '0') AS "discountPercent",
+      count(c.id)::int AS count
+    FROM customers c
+    LEFT JOIN customer_groups g ON g.id = c.customer_group_id
+    WHERE c.deleted_at IS NULL
+    GROUP BY g.id, g.name, g.discount_percent
+    ORDER BY count(c.id) DESC, g.name
+  `);
+
+  const villages = await db.query<{
+    village: string;
+    count: number;
+  }>(`
+    SELECT
+      coalesce(nullif(trim(village), ''), 'Wilayah Lainnya / Belum Terdata') AS village,
+      count(*)::int AS count
+    FROM customers
+    WHERE deleted_at IS NULL
+    GROUP BY 1
+    ORDER BY count(*) DESC
+    LIMIT 6
+  `);
+
+  const c = counts.rows[0] ?? {
+    total: 0,
+    active: 0,
+    inactive: 0,
+    walkIn: 0,
+    withCreditLimit: 0,
+    cashOnly: 0,
+    unlimitedCredit: 0,
+    totalCreditLimit: '0',
+    avgPaymentTermDays: 10,
+    withPhone: 0,
+  };
+
+  const d = debts.rows[0] ?? {
+    customersWithDebt: 0,
+    totalDebtAmount: '0',
+  };
+
+  return {
+    ...c,
+    ...d,
+    groups: groups.rows,
+    villages: villages.rows,
+  };
 }

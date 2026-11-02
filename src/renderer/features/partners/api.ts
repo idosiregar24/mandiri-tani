@@ -1,7 +1,7 @@
 // Customers and suppliers share one shape on screen: a searchable, paged list + a short form.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Customer, CustomerInput, Supplier, SupplierInput } from '@shared/schemas/master';
-import { apiDelete, apiGetPage, apiPost, apiPut, toQuery } from '@/lib/api-client';
+import type { Customer, CustomerInput, CustomerSummary, Supplier, SupplierInput } from '@shared/schemas/master';
+import { apiDelete, apiGet, apiGetPage, apiPost, apiPut, toQuery } from '@/lib/api-client';
 import { masterKeys } from '@/features/masters/api';
 
 export interface PartnerListParams {
@@ -27,6 +27,14 @@ export function usePartners<K extends Kind>(kind: K, params: PartnerListParams) 
     queryKey: partnerKeys.list(kind, params),
     queryFn: () => apiGetPage<Types[K]['row']>(`/${kind}${toQuery({ pageSize: 50, ...params })}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useCustomerSummary() {
+  return useQuery({
+    queryKey: ['customers', 'summary'] as const,
+    queryFn: () => apiGet<CustomerSummary>('/customers/summary'),
+    staleTime: 30_000,
   });
 }
 

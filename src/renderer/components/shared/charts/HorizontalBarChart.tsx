@@ -19,6 +19,7 @@ interface HorizontalBarChartProps {
   barColor?: string;
   className?: string;
   showInfo?: boolean;
+  formatValue?: (val: number) => string;
 }
 
 export function HorizontalBarChart({
@@ -29,6 +30,7 @@ export function HorizontalBarChart({
   barColor = '#2e7d32',
   className = '',
   showInfo = true,
+  formatValue = (val) => formatRupiah(String(val)),
 }: HorizontalBarChartProps) {
   const displayItems = items.slice(0, maxItems);
   const maxVal = Math.max(...displayItems.map((item) => item.amount), 1);
@@ -72,7 +74,7 @@ export function HorizontalBarChart({
                   )}
                 </div>
                 <span className="font-bold text-foreground tabular-nums text-xs sm:text-sm shrink-0">
-                  {formatRupiah(String(item.amount))}
+                  {formatValue(item.amount)}
                 </span>
               </div>
               <div className="h-2 w-full rounded-full bg-surface-muted overflow-hidden">

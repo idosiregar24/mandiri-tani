@@ -170,6 +170,47 @@ export function SalesReportPage() {
               />
             </div>
           )}
+          {groupBy === 'customer' && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <HorizontalBarChart
+                title="Peringkat Belanja Pelanggan"
+                subtitle="Top pelanggan dengan akumulasi pembelian terbesar"
+                maxItems={8}
+                items={d.groups.map((g) => ({
+                  id: g.key,
+                  name: g.label,
+                  amount: Number(g.amount),
+                  qty: g.count,
+                  unit: 'nota',
+                }))}
+              />
+              <DonutChart
+                title="Konsentrasi Belanja Pelanggan"
+                subtitle="Proporsi kontribusi omzet pelanggan"
+                centerLabel="Total Omzet"
+                segments={(() => {
+                  const top5 = d.groups.slice(0, 5);
+                  const others = d.groups.slice(5);
+                  const otherAmount = others.reduce((acc, curr) => acc + Number(curr.amount), 0);
+                  const items = top5.map((g) => ({
+                    id: g.key,
+                    label: g.label,
+                    value: Number(g.amount),
+                    desc: `${g.count} nota transaksi`,
+                  }));
+                  if (otherAmount > 0) {
+                    items.push({
+                      id: 'others',
+                      label: `Lainnya (${others.length} pelanggan)`,
+                      value: otherAmount,
+                      desc: `${others.reduce((acc, curr) => acc + curr.count, 0)} nota`,
+                    });
+                  }
+                  return items;
+                })()}
+              />
+            </div>
+          )}
           {groupBy === 'payment_method' && (
             <div className="max-w-xl">
               <DonutChart

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Customer, CustomerGroup } from '@shared/schemas/master';
+import type { Customer, CustomerGroup, CustomerSummary } from '@shared/schemas/master';
 import { startTestApi, type Data, type ErrBody, type ListBody, type TestApi } from '../../../../test/api';
 
 let api: TestApi;
@@ -102,5 +102,14 @@ describe('customers', () => {
     expect((await api.call('GET', '/customers', undefined, { as: 'KASIR' })).status).toBe(200);
     expect((await api.call('POST', '/customers', { name: 'X' }, { as: 'KASIR' })).status).toBe(403);
     expect((await api.call('GET', '/customers', undefined, { as: 'ANONYMOUS' })).status).toBe(401);
+  });
+
+  it('returns customer summary with group distribution and counts', async () => {
+    const res = await api.call<Data<CustomerSummary>>('GET', '/customers/summary');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.groups).toBeInstanceOf(Array);
+    expect(res.body.data.villages).toBeInstanceOf(Array);
+    expect(res.body.data.active).toBeGreaterThanOrEqual(1);
   });
 });

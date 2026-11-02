@@ -29,7 +29,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useCustomerGroups } from '@/features/masters/api';
-import { usePartners, useRemovePartner, useSavePartner } from '@/features/partners/api';
+import { useCustomerSummary, usePartners, useRemovePartner, useSavePartner } from '@/features/partners/api';
+import { CustomerVisualAnalytics } from './CustomerVisualAnalytics';
 import { formatNumber, formatRupiah } from '@/lib/format';
 import { applyServerErrors } from '@/lib/form-errors';
 import { useDebouncedValue } from '@/lib/hooks';
@@ -87,6 +88,7 @@ const columns: ColumnDef<Customer, unknown>[] = [
 export function CustomerList() {
   const canWrite = useCan('customers.write');
   const groups = useCustomerGroups();
+  const summary = useCustomerSummary();
   const [q, setQ] = useState('');
   const [groupId, setGroupId] = useState(ALL);
   const [status, setStatus] = useState<'active' | 'all'>('active');
@@ -116,6 +118,8 @@ export function CustomerList() {
         }
       />
       {message && <Notice tone="success">{message}</Notice>}
+
+      {summary.data && <CustomerVisualAnalytics summary={summary.data} isLoading={summary.isFetching} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedControl
