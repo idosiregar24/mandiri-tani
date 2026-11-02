@@ -1,9 +1,10 @@
 // IPC for lifecycle, app info and hardware only — business data goes through the REST API (ADR-01).
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
-import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import type { Logger } from 'pino';
 import { IPC, type AppInfo, type IposPickResult } from '@shared/bridge';
-import { PrinterSettings } from '@shared/printing';
+import { PrinterSettings, SavePdfRequest, type SavePdfResult } from '@shared/printing';
 import { readConfig, updateConfig } from './config';
 import type { Lifecycle } from './lifecycle';
 import { SERVER_PORT } from './lifecycle';
@@ -111,6 +112,35 @@ export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logge
   ipcMain.handle(IPC.importCleanup, async (event) => {
     assertTrustedSender(event);
     await lifecycle.dropIposImport();
+  });
+
+  // Report PDF (sprint-10 S10-9): the renderer's own A4 print view; the path comes from a native
+  // dialog, never from the renderer. The report data never passes through IPC (ADR-01).
+  ipcMain.handle(IPC.reportSavePdf, async (event, payload: unknown): Promise<SavePdfResult> => {
+    assertTrustedSender(event);
+    const req = SavePdfRequest.parse(payload);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Simpan laporan sebagai PDF',
+      defaultPath: join(app.getPath('documents'), `${req.fileName}.pdf`),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    };
+    const picked = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return { status: 'CANCELED' };
+    try {
+      const pdf = await event.sender.printToPDF({
+        pageSize: 'A4',
+        landscape: req.landscape,
+        printBackground: true,
+        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+      });
+      await writeFile(picked.filePath, pdf);
+      logger.info({ file: basename(picked.filePath) }, 'report PDF saved');
+      return { status: 'SAVED', fileName: basename(picked.filePath) };
+    } catch (err) {
+      logger.error({ err }, 'report PDF failed');
+      return { status: 'FAILED', message: 'PDF gagal disimpan. Pastikan file tidak sedang dibuka program lain.' };
+    }
   });
 
   ipcMain.handle(IPC.printerSettingsSave, (event, payload: unknown) => {

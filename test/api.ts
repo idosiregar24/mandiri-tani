@@ -41,6 +41,8 @@ export interface CallOptions {
 
 export interface TestApi {
   pool: Pool;
+  /** http://127.0.0.1:<port>/api/v1 — for raw requests (e.g. Excel downloads). */
+  base: string;
   /** The synthetic "restored iPOS backup" database (startTestApi({ ipos: true })). */
   iposDb: DbConfig | null;
   users: Record<Role, { id: string; token: string }>;
@@ -55,6 +57,8 @@ const logger = pino({ level: process.env.TEST_LOG ?? 'silent' });
 export interface TestApiOptions {
   /** Load test/fixtures/ipos-mini.sql into a second database, as if the main process had restored a backup. */
   ipos?: boolean;
+  /** An already restored iPOS database to import from instead of the fixture (test/real-backup.test.ts). */
+  iposDb?: DbConfig;
   hooks?: ImportHooks;
   /** Start with no user at all, like a fresh install before the setup wizard. */
   noUsers?: boolean;
@@ -111,7 +115,7 @@ export async function startTestApi(opts: TestApiOptions = {}): Promise<TestApi> 
     migrationsDir,
     localAccessKey: TEST_ACCESS_KEY,
     // No fixture → a database name that does not exist, like before the owner picks a file.
-    iposDatabase: ipos?.config.database ?? 'ipos_tidak_ada',
+    iposDatabase: opts.iposDb?.database ?? ipos?.config.database ?? 'ipos_tidak_ada',
     hooks: opts.hooks,
   });
   await server.migrate();
@@ -153,7 +157,8 @@ export async function startTestApi(opts: TestApiOptions = {}): Promise<TestApi> 
 
   return {
     pool,
-    iposDb: ipos?.config ?? null,
+    base,
+    iposDb: opts.iposDb ?? ipos?.config ?? null,
     users,
     call,
     login,

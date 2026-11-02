@@ -5,7 +5,7 @@
 > [`sprint-7-pengambilan-barang.md`](sprint-7-pengambilan-barang.md). Sudah selesai di S6:
 > Faktur JL, kredit, ongkos angkut, "diambil nanti" (reservasi), void, PIN Owner.
 
-**Ringkasan status (2026-10-29):** 9/10 item · **213 tes** hijau. Sisa: petunjuk harga terakhir di baris keranjang (B2). **Belum:** cetak bukti AB ke LX-310 fisik.
+**Ringkasan status (2026-11-02):** 10/10 item selesai. **Belum:** cetak bukti AB ke LX-310 fisik.
 
 ## Keputusan sprint ini
 
@@ -33,8 +33,8 @@
 
 - [x] **B1** F6 Tahan (label default nama pelanggan) & F7 daftar nota tertahan (Enter = ambil kembali)
   - 📌 F6 ditolak bila nota kosong/ada barang tanpa harga; F7 ditolak bila keranjang berisi (tahan dulu) — tidak ada nota yang hilang diam-diam
-- [ ] **B2** Harga terakhir di dialog harga + petunjuk di baris (Faktur)
-  - 📌 Di dialog harga: chip 3 harga terakhir (tanggal · qty), klik = pakai. **Belum:** petunjuk di baris keranjang
+- [x] **B2** Harga terakhir di dialog harga + petunjuk di baris (Faktur)
+  - 📌 Di dialog harga: chip 3 harga terakhir (tanggal · qty), klik = pakai; di baris keranjang (mode Faktur): petunjuk harga terakhir dengan tanggal & tombol langsung pasang harga
 - [x] **B3** Ringkasan nota: "Masih ada N barang belum diambil" saat pelanggan dipilih
   - 📌 Tautan "Masih ada N barang belum diambil (F11)" di ringkasan → langsung ke layar Pengambilan pelanggan itu
 - [x] **B4** Layar **Pengambilan Barang** (F11 dari kasir, menu Penjualan): pilih pelanggan / no. nota → sisa per baris → qty (Ambil semua) → penerima, diambil/diantar, kendaraan → Simpan & cetak; riwayat + batal

@@ -17,8 +17,8 @@ export function AppShell() {
   const here = findNav(pathname);
 
   return (
-    <div className="bg-canvas flex h-screen overflow-hidden">
-      <aside className="flex w-64 shrink-0 flex-col">
+    <div className="bg-canvas flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible print:bg-background">
+      <aside className="flex w-64 shrink-0 flex-col print:hidden">
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
           <span className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg">
             <Leaf className="size-5" aria-hidden />
@@ -79,8 +79,8 @@ export function AppShell() {
         <SystemStatus />
       </aside>
 
-      <div className="bg-background my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-xs">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b px-6">
+      <div className="bg-background my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-xs print:m-0 print:block print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b px-6 print:hidden">
           <nav aria-label="Lokasi" className="text-muted-foreground flex items-center gap-1.5 text-base">
             {here?.group.label && (
               <>
@@ -101,7 +101,7 @@ export function AppShell() {
             {formatDate(new Date())}
           </span>
         </div>
-        <main className="flex-1 overflow-y-auto px-8 py-7">
+        <main className="flex-1 overflow-y-auto px-8 py-7 print:overflow-visible print:p-0">
           <Outlet />
         </main>
       </div>

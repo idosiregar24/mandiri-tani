@@ -111,6 +111,37 @@ export async function apiDelete(path: string, init?: RequestInit): Promise<void>
   await send('DELETE', path, undefined, init);
 }
 
+/**
+ * A file the server sends (report ?format=xlsx), saved through the browser download (Electron shows
+ * its save dialog). Errors still come back as `{ error }` JSON and throw ApiError.
+ */
+export async function apiDownload(path: string, fileName: string): Promise<void> {
+  const token = sessionToken();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Tidak bisa terhubung ke server toko.');
+  }
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null;
+    throw new ApiError(
+      res.status,
+      json?.error?.code ?? 'HTTP_ERROR',
+      json?.error?.message ?? `Server menjawab ${res.status}.`,
+    );
+  }
+  const url = URL.createObjectURL(await res.blob());
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+}
+
 /** `?q=…&page=…` from an object, skipping empty values. */
 export function toQuery(params: Record<string, string | number | boolean | null | undefined>): string {
   const sp = new URLSearchParams();

@@ -4,6 +4,7 @@ import type {
   CommitIposInput,
   ImportBatch,
   IposArApInspectResult,
+  IposHistoryInspectResult,
   IposInspectResult,
   IposStockInspectResult,
   ResetPreparationInput,
@@ -67,6 +68,18 @@ export function useCommitArAp() {
   const refresh = useRefreshAll();
   return useMutation({
     mutationFn: (input: CommitIposArApInput) => apiPost<ImportBatch>('/imports/ipos/receivables/commit', input),
+    onSuccess: () => void refresh(),
+  });
+}
+
+export function useInspectHistory() {
+  return useMutation({ mutationFn: () => apiPost<IposHistoryInspectResult>('/imports/ipos/history/inspect', {}) });
+}
+
+export function useCommitHistory() {
+  const refresh = useRefreshAll();
+  return useMutation({
+    mutationFn: (input: CommitIposInput) => apiPost<ImportBatch>('/imports/ipos/history/commit', input),
     onSuccess: () => void refresh(),
   });
 }

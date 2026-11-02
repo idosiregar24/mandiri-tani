@@ -4,7 +4,7 @@
 > jual), §6.6 (HPP). Aturan: skill `stock-movement`. Lanjutannya: Sprint 9 (pelunasan
 > hutang/piutang).
 
-**Ringkasan status (2026-10-29):** 10/11 item · **220 tes** hijau. Sisa: harga beli terakhir di pencarian barang (A3).
+**Ringkasan status (2026-11-02):** 11/11 item selesai.
 
 ## Cara toko membeli di iPOS (backup 2026-10-24, `tbl_imhd/tbl_imdt`, angka agregat)
 
@@ -34,8 +34,8 @@
   - 📌 Dibentuk dari file skema (11 tabel). **File skema diperbarui:** `client_op_id uuid UNIQUE` di `purchase_invoices` & `purchase_returns` (Idempotency-Key). Generator migrasi diperbaiki untuk index dua baris
 - [x] **A2** `POST /purchases` (faktur langsung, Idempotency-Key), `GET /purchases?q=&supplierId=&page=`, `GET /purchases/:id`
   - 📌 Faktur bertanggal mundur → lapisan FIFO di tanggal itu (12.00 WIB) sehingga terpakai lebih dulu; no. faktur supplier ganda per supplier → 409 `DUPLICATE_SUPPLIER_INVOICE`; kredit tanpa termin supplier → 10 hari
-- [ ] **A3** `GET /purchases/price-history?productId=` (harga beli per supplier, terbaru) + harga beli terakhir di pencarian barang Owner
-  - 📌 `GET /purchases/price-history` (20 terbaru) dipakai formulir sebagai saran harga + satuan default. **Belum:** harga beli terakhir di pencarian barang Owner
+- [x] **A3** `GET /purchases/price-history?productId=` (harga beli per supplier, terbaru) + harga beli terakhir di pencarian barang Owner
+  - 📌 `GET /purchases/price-history` (20 terbaru) dipakai formulir sebagai saran harga + satuan default. `ProductListItem` menyertakan `lastPurchaseCost` untuk role dengan `cost.read` (dibuang di server untuk Kasir); ditampilkan pada pencarian `ProductPicker` dan daftar `ProductList`
 - [x] **A4** `POST /purchases/:id/returns` (retur beli `RB`), `GET` di detail faktur
   - 📌 Retur dihitung per satuan barang di faktur (tabel retur tidak menyimpan baris terima — cukup karena satu barang satu baris per faktur); potong hutang ditolak bila sisa hutang < nilai retur
 - [x] **A5** `POST /sales/:id/returns` (retur jual `RJ`), `GET /sales/:id` menyertakan qty sudah diretur

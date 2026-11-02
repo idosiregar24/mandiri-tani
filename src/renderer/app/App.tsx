@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router';
+import { CashBookPage } from '@/pages/cash/CashBookPage';
 import { CustomerList } from '@/pages/customers/CustomerList';
+import { ReportsIndex } from '@/pages/reports/ReportsIndex';
 import { HomePage } from '@/pages/home/HomePage';
 import { IposImportPage } from '@/pages/imports/IposImportPage';
 import { MasterDataPage } from '@/pages/masters/MasterDataPage';
@@ -52,6 +54,37 @@ const router = createBrowserRouter([
       { path: '/piutang', element: <AgingPage key="AR" side="AR" /> },
       { path: '/hutang', element: <AgingPage key="AP" side="AP" /> },
       { path: '/data-lain', element: <MasterDataPage /> },
+      { path: '/kas', element: <CashBookPage /> },
+      { path: '/laporan', element: <ReportsIndex /> },
+      // Report pages load on first visit (frontend-standards §9: heavy, rarely used screens are lazy).
+      {
+        path: '/laporan/penjualan',
+        lazy: async () => ({ Component: (await import('@/pages/reports/SalesReportPage')).SalesReportPage }),
+      },
+      {
+        path: '/laporan/laba',
+        lazy: async () => ({ Component: (await import('@/pages/reports/ProfitReportPage')).ProfitReportPage }),
+      },
+      {
+        path: '/laporan/arus-kas',
+        lazy: async () => ({ Component: (await import('@/pages/reports/CashflowReportPage')).CashflowReportPage }),
+      },
+      {
+        path: '/laporan/pembelian',
+        lazy: async () => ({ Component: (await import('@/pages/reports/PurchasesReportPage')).PurchasesReportPage }),
+      },
+      {
+        path: '/laporan/pupuk',
+        lazy: async () => ({ Component: (await import('@/pages/reports/FertilizerReportPage')).FertilizerReportPage }),
+      },
+      {
+        path: '/laporan/pengambilan',
+        lazy: async () => ({ Component: (await import('@/pages/reports/PickupReportsPage')).PickupReportsPage }),
+      },
+      {
+        path: '/laporan/persediaan',
+        lazy: async () => ({ Component: (await import('@/pages/reports/StockReportPage')).StockReportPage }),
+      },
       { path: '/impor-ipos', element: <IposImportPage /> },
       { path: '/uji-cetak', element: <PrintTestPage /> },
       { path: '*', element: <HomePage /> },

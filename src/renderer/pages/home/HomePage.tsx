@@ -1,5 +1,6 @@
-// Beranda: the few numbers the owner looks at first + system status (Sprint 3 D1).
-// Becomes the sales dashboard in Sprint 10.
+// Beranda (sprint-10 E4, FR-FIN-09): the Owner's dashboard — turnover & gross profit today / this
+// month vs the previous period, top products, what needs attention — then the system status.
+// A cashier sees only their own sales.
 import {
   Boxes,
   CheckCircle2,
@@ -18,6 +19,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { useHealth, useMasterTotals } from '@/features/home/api';
+import { Dashboard } from '@/features/reports/Dashboard';
 import { desktopBridge } from '@/lib/desktop';
 import { formatNumber } from '@/lib/format';
 import { useCan } from '@/lib/session';
@@ -32,8 +34,8 @@ export function HomePage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Selamat datang"
-        description="Ringkasan data toko Mandiri Tani."
+        title="Beranda"
+        description="Ringkasan penjualan dan data toko Mandiri Tani."
         actions={
           canImport &&
           totals.data?.products === 0 && (
@@ -45,6 +47,8 @@ export function HomePage() {
           )
         }
       />
+
+      <Dashboard />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

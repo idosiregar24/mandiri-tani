@@ -51,6 +51,7 @@ export async function list(
   params.push(opts.limit, opts.offset);
   const rows = await db.query<ProductListItem>(
     `SELECT p.id, p.sku, p.name, c.name AS "categoryName", bu.code AS "baseUnitCode", p.is_active AS "isActive",
+            p.last_purchase_cost::text AS "lastPurchaseCost",
             coalesce((
               SELECT json_agg(json_build_object(
                        'unitCode', u.code,
@@ -78,7 +79,8 @@ export async function get(db: Queryable, id: string): Promise<Product | null> {
       `SELECT p.id, p.sku, p.name, p.category_id AS "categoryId", c.name AS "categoryName",
               p.brand_id AS "brandId", b.name AS "brandName", p.item_type AS "itemType", p.track_stock AS "trackStock",
               p.allow_decimal_qty AS "allowDecimalQty", trim_scale(p.min_stock)::text AS "minStock",
-              trim_scale(p.max_stock)::text AS "maxStock", p.is_active AS "isActive", p.updated_at AS "updatedAt"
+              trim_scale(p.max_stock)::text AS "maxStock", p.is_active AS "isActive", p.updated_at AS "updatedAt",
+              p.last_purchase_cost::text AS "lastPurchaseCost"
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN brands b ON b.id = p.brand_id

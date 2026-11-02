@@ -248,4 +248,23 @@ describe('products', () => {
     expect((await api.call('POST', '/products', urea(), { as: 'KASIR' })).status).toBe(403);
     expect((await api.call('GET', '/products', undefined, { as: 'ANONYMOUS' })).status).toBe(401);
   });
+
+  it('includes lastPurchaseCost for Owner and strips it for Kasir (cost.read)', async () => {
+    await api.pool.query(
+      'UPDATE products SET is_active = true, deleted_at = NULL, last_purchase_cost = $1 WHERE id = $2',
+      ['12000.0000', saved.id],
+    );
+
+    const ownerList = await api.call<ListBody<ProductListItem>>('GET', `/products?q=urea`, undefined, { as: 'OWNER' });
+    expect(ownerList.body.data[0]?.lastPurchaseCost).toBe('12000.0000');
+
+    const ownerDetail = await api.call<Data<Product>>('GET', `/products/${saved.id}`, undefined, { as: 'OWNER' });
+    expect(ownerDetail.body.data.lastPurchaseCost).toBe('12000.0000');
+
+    const kasirList = await api.call<ListBody<ProductListItem>>('GET', `/products?q=urea`, undefined, { as: 'KASIR' });
+    expect(kasirList.body.data[0]?.lastPurchaseCost).toBeUndefined();
+
+    const kasirDetail = await api.call<Data<Product>>('GET', `/products/${saved.id}`, undefined, { as: 'KASIR' });
+    expect(kasirDetail.body.data.lastPurchaseCost).toBeUndefined();
+  });
 });

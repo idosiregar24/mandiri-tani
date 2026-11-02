@@ -126,3 +126,63 @@ INSERT INTO tbl_itemstok VALUES
   ('UREA CONTOH',   'UTM', 4000, 7400), ('NPK CONTOH 16', 'UTM', 5000, 10400), ('RACUN A', 'UTM', 12, 60000),
   ('BIBIT 01',      'UTM', 5, 4000),    ('SP CONTOH',     'UTM', -3, 0),       ('BARANG HILANG', 'UTM', 5, 5000),
   ('UREA CONTOH',   'DEP', 999, 7200),  ('TALI 01',       'UTM', 0, 0);
+
+-- History (Sprint 10): the header/line columns the history import reads, filled in so every note
+-- adds up the iPOS way (total = subtotal − potnomfaktur + biayalain; jmltunai includes change).
+-- Cases: cash note with change, credit notes, a note discount, ongkos angkut, a line whose HPP is 0
+-- (DQ-3 → unknown), a line sold in a unit the item no longer has, an unknown customer (→ Umum),
+-- a multi-line cash-out document and an expense without a known keyword.
+ALTER TABLE tbl_ikhd ADD COLUMN keterangan text, ADD COLUMN subtotal numeric DEFAULT 0, ADD COLUMN potnomfaktur numeric DEFAULT 0,
+  ADD COLUMN pajak numeric DEFAULT 0, ADD COLUMN biayalain numeric DEFAULT 0, ADD COLUMN totalakhir numeric DEFAULT 0,
+  ADD COLUMN jmltunai numeric DEFAULT 0;
+ALTER TABLE tbl_ikdt ADD COLUMN nobaris integer, ADD COLUMN potongan numeric DEFAULT 0, ADD COLUMN total numeric(18,3),
+  ADD COLUMN jmlkonversi numeric(18,3) DEFAULT 1;
+ALTER TABLE tbl_imhd ADD COLUMN keterangan text, ADD COLUMN subtotal numeric DEFAULT 0, ADD COLUMN potnomfaktur numeric DEFAULT 0,
+  ADD COLUMN pajak numeric DEFAULT 0, ADD COLUMN biayalain numeric DEFAULT 0, ADD COLUMN totalakhir numeric DEFAULT 0,
+  ADD COLUMN jmltunai numeric DEFAULT 0;
+ALTER TABLE tbl_imdt ADD COLUMN nobaris integer, ADD COLUMN potongan numeric DEFAULT 0, ADD COLUMN total numeric(18,3),
+  ADD COLUMN jmlkonversi numeric(18,3) DEFAULT 1;
+
+INSERT INTO tbl_ikdt (iddetail, notransaksi, kodeitem, jumlah, satuan, harga) VALUES
+  ('s5','0000003/JL/UTM/0226','NPK CONTOH 16',100,'KG',14000),
+  ('s6','0000004/JL/UTM/0226','RACUN B',1,'BTL',250000);
+UPDATE tbl_ikdt SET nobaris = 1, total = jumlah * harga;
+UPDATE tbl_ikdt SET nobaris = 2 WHERE iddetail = 's4';
+UPDATE tbl_ikdt SET jmlkonversi = 50 WHERE satuan = 'ZAK';
+UPDATE tbl_ikhd h SET subtotal = (SELECT sum(total) FROM tbl_ikdt d WHERE d.notransaksi = h.notransaksi);
+UPDATE tbl_ikhd SET jmltunai = 50000, keterangan = 'DIAMBIL' WHERE notransaksi = '0000001/KSR/UTM/0126';
+UPDATE tbl_ikhd SET potnomfaktur = 40000, keterangan = 'DIANTAR' WHERE notransaksi = '0000002/JL/UTM/0126';
+UPDATE tbl_ikhd SET biayalain = 100000 WHERE notransaksi = '0000003/JL/UTM/0226';
+UPDATE tbl_ikhd SET totalakhir = subtotal - potnomfaktur + biayalain;
+
+CREATE TABLE tbl_item_ik (
+  iddetail varchar(150), iddetailim varchar(150), iddetailtrs varchar(150), notransaksi varchar(100), kodekantor varchar(50),
+  tanggal timestamp, tipe varchar(20), kodeitem varchar(100), jumlahdasar numeric(20,3), hargadasar numeric(35,20)
+);
+INSERT INTO tbl_item_ik (iddetail, iddetailtrs, notransaksi, kodekantor, tipe, kodeitem, jumlahdasar, hargadasar) VALUES
+  ('k1','s1','0000001/KSR/UTM/0126','UTM','KSR','UREA CONTOH',3,7000),
+  ('k2','s2','0000001/JL/UTM/0126','UTM','JL','UREA CONTOH',300,7000),
+  ('k3','s2','0000001/JL/UTM/0126','UTM','JL','UREA CONTOH',200,7100),
+  ('k4','s3','0000002/JL/UTM/0126','UTM','JL','UREA CONTOH',200,7100),
+  ('k5','s4','0000002/JL/UTM/0126','UTM','JL','RACUN A',2,0),
+  ('k6','s5','0000003/JL/UTM/0226','UTM','JL','NPK CONTOH 16',100,10400),
+  ('k7','s6','0000004/JL/UTM/0226','UTM','JL','RACUN B',1,200000);
+
+INSERT INTO tbl_imdt (iddetail, notransaksi, kodeitem, jumlah, satuan, harga) VALUES
+  ('b2','0000002/BL/UTM/0226','ALAT 01',25,'PCS',120000);
+UPDATE tbl_imdt SET nobaris = 1, total = jumlah * harga;
+UPDATE tbl_imdt SET jmlkonversi = 50 WHERE satuan = 'ZAK';
+UPDATE tbl_imhd h SET subtotal = (SELECT sum(total) FROM tbl_imdt d WHERE d.notransaksi = h.notransaksi);
+UPDATE tbl_imhd SET totalakhir = subtotal - potnomfaktur + biayalain, keterangan = 'PUPUK MASUK';
+
+CREATE TABLE tbl_acckashd (notransaksi varchar(50), kodekantor varchar(10), tanggal timestamp, tipe varchar(10), jumlah numeric, keterangan text);
+CREATE TABLE tbl_acckasdt (iddetail varchar(50), nobaris integer, notransaksi varchar(50), jumlah numeric, keterangan text);
+INSERT INTO tbl_acckashd VALUES
+  ('0001/KASO/UTM/0126','UTM','2026-01-10 16:00','KASO',650000,NULL),
+  ('0002/KASO/UTM/0226','UTM','2026-02-11 16:00','KASO',300000,NULL),
+  ('0003/KASO/UTM/0226','UTM','2026-02-12 16:00','KASO',50000,NULL);
+INSERT INTO tbl_acckasdt VALUES
+  ('c1',1,'0001/KASO/UTM/0126',500000,'ONGKOS EKSPEDISI PUPUK'),
+  ('c2',2,'0001/KASO/UTM/0126',150000,'UPAH BONGKAR MUAT'),
+  ('c3',1,'0002/KASO/UTM/0226',300000,'BELI SOLAR MOBIL'),
+  ('c4',1,'0003/KASO/UTM/0226',50000,'SUMBANGAN KAMPUNG');

@@ -1,6 +1,7 @@
 // Sidebar menu (design-standards §4): ≤ 7 groups, items the role may not use are hidden,
 // modules not built yet are shown disabled as "Segera".
 import {
+  BarChart3,
   Boxes,
   ClipboardCheck,
   Building2,
@@ -75,7 +76,10 @@ export const NAV: NavGroup[] = [
   },
   {
     label: 'Keuangan & Laporan',
-    items: [{ label: 'Laporan', to: '/laporan', icon: Landmark, permission: 'reports.sales', soon: true }],
+    items: [
+      { label: 'Laporan', to: '/laporan', icon: BarChart3, permission: 'reports.sales' },
+      { label: 'Buku Kas', to: '/kas', icon: Landmark, permission: 'cash.in' },
+    ],
   },
   {
     label: 'Pengaturan',

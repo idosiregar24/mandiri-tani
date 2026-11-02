@@ -1,6 +1,7 @@
 // Products with their units, barcodes and prices saved as ONE package in one transaction
 // (FR-MD-01…04, PRD §6.3). Price changes are audited (security-standards §7).
 import { dec, toMoney, toQty } from '@shared/money';
+import { hasPermission } from '@shared/permissions';
 import {
   ProductInput,
   type Product,
@@ -20,14 +21,27 @@ type UnitIn = ProductInputParsed['units'][number];
 export async function list(
   pool: Pool,
   q: ProductListQuery,
+  ctx?: RequestCtx,
 ): Promise<{ rows: ProductListItem[]; total: number; page: number; pageSize: number }> {
   const r = await repo.list(pool, { ...q, limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
-  return { ...r, page: q.page, pageSize: q.pageSize };
+  const canCost = ctx ? hasPermission(ctx.role, 'cost.read') : true;
+  const rows = canCost
+    ? r.rows
+    : r.rows.map((row) => {
+        const { lastPurchaseCost: _discard, ...safe } = row;
+        return safe;
+      });
+  return { rows, total: r.total, page: q.page, pageSize: q.pageSize };
 }
 
-export async function get(pool: Pool, id: string): Promise<Product> {
+export async function get(pool: Pool, id: string, ctx?: RequestCtx): Promise<Product> {
   const p = await repo.get(pool, id);
   if (!p) throw notFoundError('Barang');
+  const canCost = ctx ? hasPermission(ctx.role, 'cost.read') : true;
+  if (!canCost) {
+    const { lastPurchaseCost: _discard, ...safe } = p;
+    return safe as Product;
+  }
   return p;
 }
 

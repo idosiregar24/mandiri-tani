@@ -2,9 +2,11 @@
 // qty / unit / price cells open their dialog on click.
 import { AlertTriangle, ShoppingBasket } from 'lucide-react';
 import { useEffect } from 'react';
-import { formatNumber, formatQty, formatRupiah } from '@/lib/format';
+import { dec } from '@shared/money';
+import { formatDate, formatNumber, formatQty, formatRupiah } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { isShort, lineAmount, unitOf, usePosStore, type CartLine } from './store';
+import { useLastPrices } from './api';
+import { isShort, lineAmount, unitOf, usePosStore, type CartCustomer, type CartLine } from './store';
 
 export type LineAction = 'qty' | 'unit' | 'price';
 
@@ -13,6 +15,9 @@ export function PosCart({ onEdit }: { onEdit: (key: string, action: LineAction) 
   const selectedKey = usePosStore((s) => s.selectedKey);
   const flashKey = usePosStore((s) => s.flashKey);
   const select = usePosStore((s) => s.select);
+  const channel = usePosStore((s) => s.channel);
+  const customer = usePosStore((s) => s.customer);
+  const isFaktur = channel === 'FAKTUR';
 
   // Keep the selected row in view when ↑/↓ moves past the edge.
   useEffect(() => {
@@ -50,6 +55,8 @@ export function PosCart({ onEdit }: { onEdit: (key: string, action: LineAction) 
             selected={l.key === selectedKey}
             flash={l.key === flashKey}
             short={isShort(lines, l)}
+            isFaktur={isFaktur}
+            customer={customer}
             onSelect={() => select(l.key)}
             onEdit={(a) => onEdit(l.key, a)}
           />
@@ -65,6 +72,8 @@ function Row({
   selected,
   flash,
   short,
+  isFaktur,
+  customer,
   onSelect,
   onEdit,
 }: {
@@ -73,11 +82,16 @@ function Row({
   selected: boolean;
   flash: boolean;
   short: boolean;
+  isFaktur: boolean;
+  customer: CartCustomer | null;
   onSelect: () => void;
   onEdit: (a: LineAction) => void;
 }) {
   const unit = unitOf(line);
   const amount = lineAmount(line);
+  const setPrice = usePosStore((s) => s.setPrice);
+  const last = useLastPrices(isFaktur ? customer?.id ?? null : null, line.unitId);
+  const lastPrice = last.data?.[0];
   const cell = 'h-14 px-3 align-middle';
   const editable = 'hover:bg-black/[0.04] cursor-pointer rounded-md px-2 py-1';
   return (
@@ -130,6 +144,21 @@ function Row({
         </button>
         {line.priceSource === 'MANUAL' && line.listPrice && (
           <p className="text-muted-foreground text-xs">daftar {formatRupiah(line.listPrice)}</p>
+        )}
+        {isFaktur && customer && lastPrice && (
+          <p className="text-muted-foreground text-xs">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPrice(line.key, dec(lastPrice.unitPrice).toFixed());
+              }}
+              className="hover:text-foreground underline decoration-dotted cursor-pointer"
+              title={`Pakai harga terakhir ke ${customer.name}: ${formatRupiah(lastPrice.unitPrice)} (${formatNumber(lastPrice.qty)} ${unit.unitCode.toLowerCase()} pada ${formatDate(lastPrice.trxAt)})`}
+            >
+              terakhir {formatRupiah(lastPrice.unitPrice)}
+            </button>
+          </p>
         )}
       </td>
       <td className={cn(cell, 'text-right text-lg font-semibold tabular-nums')}>

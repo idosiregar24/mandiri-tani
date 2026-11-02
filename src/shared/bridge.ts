@@ -1,7 +1,15 @@
 // The narrow API the preload script exposes as `window.pos` (security-standards §5).
 // Business data never goes through here — only lifecycle, app info and hardware.
 import type { LifecycleStatus } from './lifecycle';
-import type { PrintDocument, PrinterInfo, PrinterSettings, PrintResult, PrintTestRequest } from './printing';
+import type {
+  PrintDocument,
+  PrinterInfo,
+  PrinterSettings,
+  PrintResult,
+  PrintTestRequest,
+  SavePdfRequest,
+  SavePdfResult,
+} from './printing';
 
 export const IPC = {
   lifecycleGet: 'pos:lifecycle:get',
@@ -17,6 +25,7 @@ export const IPC = {
   printerSettingsSave: 'pos:printer:settings-save',
   importChooseIpos: 'pos:import:choose-ipos',
   importCleanup: 'pos:import:cleanup',
+  reportSavePdf: 'pos:report:save-pdf',
 } as const;
 
 /** Result of picking + restoring an iPOS backup (FR-MIG-01). Errors come back as data, not as thrown IPC errors. */
@@ -54,6 +63,8 @@ export interface PosBridge {
   chooseIposBackup(): Promise<IposPickResult>;
   /** Drops the temporary import database (after an import or when leaving the wizard). */
   cleanupIposImport(): Promise<void>;
+  /** Saves the current page's print view (A4) as a PDF — the Owner picks the folder in a native dialog. */
+  saveReportPdf(request: SavePdfRequest): Promise<SavePdfResult>;
 }
 
 declare global {

@@ -12,7 +12,7 @@ di depan, deskripsi huruf kecil dipisah tanda hubung (contoh:
 sprint memakai nomor sprint tempat fitur itu **utamanya** dibangun, dan
 menyebut sprint lain di dalamnya.
 
-**Status saat ini (2026-10-26):** S1 selesai kecuali uji di Windows bersih (G2); S3 (master + impor iPOS) dan S4 (stok FIFO, penyesuaian, opname, impor stok awal) selesai — keduanya dikerjakan sebelum S2. Desain UI diganti ke gaya "modern simple" (design-standards §0). Catatan lama (2026-10-24): Sudah ada:
+**Status saat ini (2026-10-30):** S10 (laporan, buku kas, histori iPOS) 23/24 — dikerjakan sebelum sisa S2. **Sebelumnya (2026-10-26):** S1 selesai kecuali uji di Windows bersih (G2); S3 (master + impor iPOS) dan S4 (stok FIFO, penyesuaian, opname, impor stok awal) selesai — keduanya dikerjakan sebelum S2. Desain UI diganti ke gaya "modern simple" (design-standards §0). Catatan lama (2026-10-24): Sudah ada:
 dokumen `.claude` (PRD, skema, rules, skills, plan) dan **alat uji cetak
 LX-310** (`tools/uji-cetak/`, Sprint 0) yang menunggu diuji di printer asli.
 Sprint 1 siap dimulai paralel.
@@ -29,15 +29,15 @@ pengembangan sekarang vs impor saat go-live — mulai S3).
 |---|---|---|---|
 | [S0](sprint-0-uji-cetak-printer.md) | M0 Fondasi | **Uji cetak Epson LX-310 didahulukan** (permintaan owner): alat PowerShell RAW ESC/P, halaman pola/font/faktur, daftar cek hasil di printer asli | 🔶 Cetak RAW LX-310 berhasil; uji cetak di aplikasi (2 printer) + simpan pengaturan selesai; menunggu baris/halaman, font & uji thermal |
 | [S1](sprint-1-fondasi-shell-postgresql.md) | M0 Fondasi | Scaffold Electron + Vite + React, PostgreSQL portable + `PgManager`, migration runner, Express skeleton, boot screen, shutdown, kerangka installer | 🔶 Installer dibuild & build terpaket teruji (boot 1,3 dtk, crash/kill, tutup normal); **menunggu owner:** install di Windows bersih + HP (G2), logoff & sleep (F2) |
-| [S2](sprint-2-auth-user-pengaturan.md) | M0 Fondasi | Auth (password/PIN, sesi), user & role, permission, audit log, settings, first-run wizard, app shell (penomoran dokumen sudah di S4) | 🔶 Rencana 0/27 disusun 2026-10-29 |
+| [S2](sprint-2-auth-user-pengaturan.md) | M0 Fondasi | Auth (password/PIN, sesi), user & role, permission, audit log, settings, first-run wizard, app shell (penomoran dokumen sudah di S4) | 🔶 13/27: login, sesi, lockout, rate limit, wizard pertama kali. **Sisa:** user, pengaturan, catatan aktivitas, menu per role |
 | [S3](sprint-3-master-data-impor-ipos.md) | M1 Master & Inventori | Produk multi-satuan (KG/ZAK), harga, kategori/merek, pelanggan & grup, supplier, gudang, metode bayar per rekening; **importer iPOS lingkup Master** — dikerjakan **sebelum S2** (keputusan owner) | ✅ 31/31 item, 112 tes hijau; impor backup asli cocok 1:1 (416 barang, 1.238 pelanggan, 37 supplier). **Menunggu owner:** coba alur impor → reset → impor ulang di aplikasi |
 | [S4](sprint-4-stok-fifo-opname.md) | M1 Master & Inventori | `stockService.apply` (ledger + lock + HPP), **impor stok awal iPOS**, kartu stok (buku & fisik), penyesuaian, opname (desktop), stok menipis, cek konsistensi — dikerjakan **sebelum S2** | ✅ 27/27 item, 143 tes; stok awal backup asli = iPOS **Rp 1.793.173.974** (288 barang, 357 lapisan FIFO). **Menunggu owner:** coba penyesuaian & opname di aplikasi |
 | [S5](sprint-5-layar-kasir.md) | M2 POS Kasir | Layar kasir: cari/scan, keranjang, resolusi harga + ubah harga baris, ganti satuan, potongan nota nominal, shortcut, `useScanner` — dikerjakan sebelum sisa S2 (owner 2026-10-29) | 🔶 14/16, 180 tes; layar jalan, bayar menyusul S6. **Menunggu owner:** coba di aplikasi |
 | [S6](sprint-6-bayar-simpan-cetak.md) | M2 POS Kasir | ~~Shift~~ (tidak dipakai — owner 2026-10-29), pembayaran tunai/transfer/QRIS, simpan transaksi, cetak struk thermal & faktur LX-310, cetak ulang, batal nota → **transaksi KSR pertama end-to-end** | ✅ 12/12, 207 tes; termasuk Faktur JL + piutang + diambil nanti (dari S7). **Belum:** uji printer fisik |
-| [S7](sprint-7-tahan-harga-pengambilan.md) | M2 POS Kasir | **Faktur Penjualan (JL)** (selesai di S6), tahan/ambil nota F6/F7, harga terakhir pelanggan, **Pengambilan Barang (AB)** + batal ([rencana fitur](sprint-7-pengambilan-barang.md)), void & PIN Owner (S6) | 🔶 9/10, 213 tes. **Belum:** uji LX-310 fisik |
-| [S8](sprint-8-pembelian-retur.md) | M3 Pembelian & AR/AP | Faktur pembelian langsung (BL), riwayat harga beli, retur beli (RB) & retur jual (RJ); ~~PO + penerimaan~~ (tidak dipakai toko) | 🔶 10/11, 220 tes |
+| [S7](sprint-7-tahan-harga-pengambilan.md) | M2 POS Kasir | **Faktur Penjualan (JL)** (selesai di S6), tahan/ambil nota F6/F7, harga terakhir pelanggan, **Pengambilan Barang (AB)** + batal ([rencana fitur](sprint-7-pengambilan-barang.md)), void & PIN Owner (S6) | ✅ 10/10, 213 tes. **Belum:** uji LX-310 fisik |
+| [S8](sprint-8-pembelian-retur.md) | M3 Pembelian & AR/AP | Faktur pembelian langsung (BL), riwayat harga beli, retur beli (RB) & retur jual (RJ); ~~PO + penerimaan~~ (tidak dipakai toko) | ✅ 11/11, 220 tes |
 | [S9](sprint-9-pelunasan-hutang-piutang.md) | M3 Pembelian & AR/AP | Pelunasan piutang multi-nota (BP), pembayaran hutang (BH), jatuh tempo, aging, saldo awal, **impor piutang terbuka iPOS** + hutang dicentang (FR-MIG-05) | 🔶 11/12, 232 tes. **Belum:** uji langkah impor piutang di aplikasi dengan backup asli |
-| S10 | M4 Laporan | Laba kotor, arus kas, Penjualan Rekap & Pembelian Detail ala iPOS, rekap harian pupuk, barang belum diambil & riwayat pengambilan, dashboard, ekspor; **impor histori iPOS 2 tahun** | — |
+| [S10](sprint-10-laporan-histori-ipos.md) | M4 Laporan | Laba kotor, arus kas + **buku kas manual**, Penjualan Rekap & Pembelian Detail ala iPOS, rekap harian pupuk, barang belum diambil & riwayat pengambilan, dashboard, ekspor; **impor histori iPOS 2 tahun** (nota, faktur beli, kas keluar; histori BP ditunda) — dikerjakan sebelum sisa S2 (owner 2026-10-30) | 🔶 23/24, 262 tes: buku kas, 9 laporan (layar, Excel, Cetak/PDF), dashboard Beranda, impor histori 2 tahun (backup asli cocok 1:1). **Menunggu owner:** coba di aplikasi (F2) |
 | S11 | M5 Sinkronisasi | Pairing perangkat, `sync/pull`, `sync/push`, halaman Koneksi | — |
 | S12 | M5 Sinkronisasi | App mobile Capacitor: cek harga/stok offline, opname offline, status sync | — |
 | S13 | M6 Hardening | Backup/restore, uji cabut listrik, sleep/resume, konkurensi, performa 20k produk | — |
@@ -76,6 +76,7 @@ Setelah v1.0: v1.x (Mode Terminal, auto-update, batch/kedaluwarsa) →
 | Express / pg / Zod / pino | 5.3.0 / 8.23.1 / 4.6.7 / 10.4.0 | |
 | React Hook Form / @hookform/resolvers / TanStack Table | 7.91.0 / 5.9.1 / **8.21.3** | Dipasang S3. npm memberi TanStack Table **v9** (API berbeda) → dipin ke v8 sesuai frontend-standards §5 |
 | Vitest / ESLint | 5.0.5 / 10.13.0 | |
+| exceljs | **4.4.0** (dipin) | Ekspor laporan `?format=xlsx` (S10). `uuid` bawaannya di-override ke 11.1.1 (`package.json` `overrides`) — advisori GHSA-w5hq-g745-h8pq |
 | PostgreSQL portable | **18.4-1** (`resources/postgres/VERSION`) | Zip binaries EDB; 18.5 belum tersedia (403). PG 18: `uuidv7()` bawaan, locale `builtin C.UTF-8`. CDN EDB membatasi ±30 KB/s per koneksi → `scripts/lib/parallel-download.mjs` (16 koneksi, ±300 KB/s) |
 
 ## Penyimpangan dari PRD
@@ -104,6 +105,9 @@ apa, alasan) — lalu perbarui PRD/skema bila keputusannya permanen.
 | 2026-10-24 | Desain UI **sederhana, mudah dipakai, mudah dibaca** (shadcn boleh) — design-standards §0 | Permintaan owner |
 | 2026-10-26 | Urutan sprint: **S3 → S4 sebelum S2**; sampai S2 akses lewat kunci akses lokal (S3-1), `created_by` dokumen boleh NULL (S3-2, S4-1), `numbering.ts` ditarik maju dari S2 (S4-2) | Keputusan owner ("sprint 3 dulu", "langsung ke sprint 4") |
 | 2026-10-26 | Gaya UI **"modern simple"**: kanvas netral, panel putih, header tabel netral, pill status bertitik, filter segmented, menu ⋯ per baris, kartu angka; hijau hanya untuk aksi utama/status | 5 referensi desain dari owner — design-standards §0 |
+| 2026-10-30 | Histori pelunasan piutang (BP) iPOS **tidak diimpor** di S10 (FR-MIG-02) — menyusul bersama Kartu Piutang | Jawaban owner: piutang terbuka S9 bernilai sisa; histori BP butuh piutang "lunas" untuk ±1.900 nota |
+| 2026-10-30 | Histori faktur beli iPOS diimpor tanpa pembagian tunai/kredit → "Bayar Kredit" pada Pembelian Detail untuk faktur lama = 0; nota jual iPOS dengan pelanggan tak dikenal dicatat atas nama Umum | Skema `purchase_invoices` tidak punya kolom kredit (kredit = `payables`, hanya yang dicentang Owner, FR-MIG-05); omzet histori harus tetap utuh |
+| 2026-10-30 | Ekspor PDF laporan dibuat di renderer (`printToPDF` lewat `window.pos`), bukan `?format=pdf` di server; Excel tetap `?format=xlsx` | Tanpa pustaka PDF di server; tampilan cetak A4 yang sama dipakai untuk Cetak & PDF |
 | 2026-10-24 | Faktur dicetak **meniru format faktur iPOS** (½ halaman 9,5"×5,5", 96 kolom, logo, Terbilang, kotak Penerima, ruang stempel); hanya metode bayar yang dipakai yang dicetak | Foto faktur dari owner (`.claude/file/contoh-faktur-ipos-LX310.jpg`, lokal) |
 
 ## Pertanyaan terbuka

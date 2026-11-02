@@ -151,6 +151,32 @@ export const CommitIposArApInput = CommitIposInput.extend({
 });
 export type CommitIposArApInput = z.input<typeof CommitIposArApInput>;
 
+/** 2-year history scope (FR-MIG-02 "Histori", sprint-10 S10-10), counted in iPOS itself. */
+export interface IposHistoryCounts {
+  ksr: number;
+  ksrTotal: string;
+  jl: number;
+  jlTotal: string;
+  /** Σ line HPP (rounded per line) of the lines whose HPP iPOS knew. */
+  saleCost: string;
+  /** Lines iPOS sold without HPP (DQ-3) — imported with HPP "tidak diketahui". */
+  linesWithoutCost: number;
+  purchases: number;
+  purchasesTotal: string;
+  cashOut: number;
+  cashOutTotal: string;
+  /** Per month & note type, for the month-by-month check. */
+  months: { month: string; tipe: string; count: number; total: string }[];
+}
+
+export interface IposHistoryInspectResult {
+  source: IposSourceInfo;
+  fingerprint: FingerprintProblem[];
+  counts: IposHistoryCounts | null;
+  issues: DataIssue[];
+  blocker: string | null;
+}
+
 export interface ImportBatch {
   id: string;
   sourceFile: string;
@@ -161,7 +187,7 @@ export interface ImportBatch {
   status: 'RUNNING' | 'COMMITTED' | 'FAILED' | 'DISCARDED';
   startedAt: string;
   finishedAt: string | null;
-  counts: IposMasterCounts | IposStockCounts | IposArApCounts | null;
+  counts: IposMasterCounts | IposStockCounts | IposArApCounts | IposHistoryCounts | null;
   reconciliation: ReconciliationRow[];
   issues: DataIssue[];
   error: string | null;

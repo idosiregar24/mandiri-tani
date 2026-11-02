@@ -310,11 +310,18 @@ export async function wipePreparationData(db: Queryable): Promise<number> {
 // ------------------------------------------------------------------ opening stock (Sprint 4)
 export async function scopeState(
   db: Queryable,
-): Promise<{ master: boolean; stock: boolean; receivables: boolean; movements: number }> {
-  const r = await db.query<{ master: boolean; stock: boolean; receivables: boolean; movements: number }>(
+): Promise<{ master: boolean; stock: boolean; receivables: boolean; history: boolean; movements: number }> {
+  const r = await db.query<{
+    master: boolean;
+    stock: boolean;
+    receivables: boolean;
+    history: boolean;
+    movements: number;
+  }>(
     `SELECT EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'master') AS master,
             EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'stock') AS stock,
             EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'receivables') AS receivables,
+            EXISTS (SELECT 1 FROM import_batches WHERE status = 'COMMITTED' AND scope ? 'history') AS history,
             (SELECT count(*) FROM stock_movements)::int AS movements`,
   );
   return r.rows[0]!;

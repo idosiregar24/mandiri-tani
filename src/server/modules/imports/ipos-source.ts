@@ -1,7 +1,7 @@
 // Read-only access to the temporary `ipos_import` database the main process restored the
 // iPOS backup into (sprint-3 S3-3/S3-4). Nothing here writes to it, and nothing is hard-coded
 // from one particular backup — the fingerprint below is checked first (FR-MIG-09).
-import type { FingerprintProblem, IposSourceInfo } from '@shared/schemas/imports';
+import type { FingerprintProblem, IposHistoryCounts, IposSourceInfo } from '@shared/schemas/imports';
 import { createPool, type DbConfig, type Queryable } from '../../db/pool';
 import { AppError } from '../../lib/errors';
 
@@ -391,4 +391,168 @@ export async function loadArApRows(db: Queryable): Promise<IposArApRows> {
     ),
   ]);
   return { receivables: rec.rows, payables: pay.rows, source: totals.rows[0]! };
+}
+
+// ------------------------------------------------------------------ 2-year history (sprint-10 S10-10)
+const DOC_COLUMNS = [
+  'notransaksi',
+  'kodekantor',
+  'tanggal',
+  'tipe',
+  'kodesupel',
+  'keterangan',
+  'subtotal',
+  'potnomfaktur',
+  'pajak',
+  'biayalain',
+  'totalakhir',
+  'jmltunai',
+  'jmlkredit',
+  'byr_krd_jt',
+];
+const LINE_COLUMNS = [
+  'iddetail',
+  'nobaris',
+  'notransaksi',
+  'kodeitem',
+  'jumlah',
+  'satuan',
+  'harga',
+  'potongan',
+  'total',
+  'jmlkonversi',
+];
+export const HISTORY_FINGERPRINT: Record<string, readonly string[]> = {
+  tbl_ikhd: DOC_COLUMNS,
+  tbl_ikdt: LINE_COLUMNS,
+  tbl_item_ik: ['iddetailtrs', 'tipe', 'jumlahdasar', 'hargadasar'],
+  tbl_imhd: DOC_COLUMNS,
+  tbl_imdt: LINE_COLUMNS,
+  tbl_acckashd: ['notransaksi', 'kodekantor', 'tanggal', 'tipe', 'jumlah'],
+  tbl_acckasdt: ['notransaksi', 'nobaris', 'jumlah', 'keterangan'],
+};
+
+/** A sales note (KSR/JL) or purchase invoice (BL) header. Money as decimal text. */
+export interface IposHistDoc {
+  notransaksi: string;
+  tipe: string;
+  /** "2026-01-02T08:00:00" — iPOS local time (WIB). */
+  tanggal: string;
+  kodesupel: string;
+  keterangan: string | null;
+  subtotal: string;
+  potnomfaktur: string;
+  pajak: string;
+  biayalain: string;
+  totalakhir: string;
+  jmltunai: string;
+  jmlkredit: string;
+  jatuhtempo: string | null;
+}
+
+export interface IposHistLine {
+  notransaksi: string;
+  kodeitem: string;
+  satuan: string;
+  jumlah: string;
+  harga: string;
+  potongan: string;
+  total: string;
+  jmlkonversi: string;
+  /** Sales only: Σ jumlahdasar × hargadasar of the FIFO layers the line used (tbl_item_ik). */
+  cost: string | null;
+  /** Sales only: a layer had cost 0, or none was recorded — iPOS did not know the HPP (DQ-3). */
+  costUnknown: boolean;
+}
+
+export interface IposCashLine {
+  notransaksi: string;
+  tanggal: string;
+  nobaris: number;
+  jumlah: string;
+  keterangan: string | null;
+}
+
+export interface IposHistoryRows {
+  sales: IposHistDoc[];
+  saleLines: IposHistLine[];
+  purchases: IposHistDoc[];
+  purchaseLines: IposHistLine[];
+  cash: IposCashLine[];
+  source: IposHistoryCounts;
+}
+
+const histDocs = (table: 'tbl_ikhd' | 'tbl_imhd', types: string) => `
+  SELECT trim(notransaksi) AS notransaksi, tipe, to_char(tanggal, 'YYYY-MM-DD"T"HH24:MI:SS') AS tanggal,
+         trim(coalesce(kodesupel, '')) AS kodesupel, nullif(trim(keterangan), '') AS keterangan,
+         round(coalesce(subtotal, 0), 2)::text AS subtotal, round(coalesce(potnomfaktur, 0), 2)::text AS potnomfaktur,
+         round(coalesce(pajak, 0), 2)::text AS pajak, round(coalesce(biayalain, 0), 2)::text AS biayalain,
+         round(coalesce(totalakhir, 0), 2)::text AS totalakhir, round(coalesce(jmltunai, 0), 2)::text AS jmltunai,
+         round(coalesce(jmlkredit, 0), 2)::text AS jmlkredit, byr_krd_jt::date::text AS jatuhtempo
+  FROM ${table} WHERE kodekantor = $1 AND tipe IN (${types})
+  ORDER BY tanggal, notransaksi`;
+
+/** HPP per sales line from the FIFO consumption rows (tbl_item_ik.iddetailtrs = line iddetail). */
+const LINE_COST = `c AS (
+  SELECT iddetailtrs, sum(jumlahdasar * hargadasar) AS cost, bool_or(hargadasar = 0) AS zero
+  FROM tbl_item_ik WHERE tipe IN ('KSR','JL') GROUP BY iddetailtrs)`;
+
+const histLines = (line: 'tbl_ikdt' | 'tbl_imdt', head: 'tbl_ikhd' | 'tbl_imhd', types: string, withCost: boolean) => `
+  ${withCost ? `WITH ${LINE_COST}` : ''}
+  SELECT trim(d.notransaksi) AS notransaksi, trim(d.kodeitem) AS kodeitem, trim(d.satuan) AS satuan,
+         d.jumlah::text AS jumlah, round(d.harga, 2)::text AS harga, round(coalesce(d.potongan, 0), 2)::text AS potongan,
+         round(d.total, 2)::text AS total, coalesce(nullif(d.jmlkonversi, 0), 1)::text AS jmlkonversi,
+         ${withCost ? `CASE WHEN c.zero IS FALSE THEN round(c.cost, 2)::text END AS cost, (c.zero IS NOT FALSE) AS "costUnknown"` : `NULL AS cost, false AS "costUnknown"`}
+  FROM ${line} d JOIN ${head} h ON h.notransaksi = d.notransaksi
+  ${withCost ? 'LEFT JOIN c ON c.iddetailtrs = d.iddetail' : ''}
+  WHERE h.kodekantor = $1 AND h.tipe IN (${types})
+  ORDER BY d.notransaksi, d.nobaris, d.iddetail`;
+
+export async function loadHistoryRows(db: Queryable): Promise<IposHistoryRows> {
+  // A fresh restore has no planner statistics: without them the line ⋈ FIFO-row joins become nested
+  // loops over 15.000 × 15.000 rows and hit the statement timeout. ANALYZE reads, it changes no data.
+  await db.query('ANALYZE tbl_ikhd, tbl_ikdt, tbl_item_ik, tbl_imhd, tbl_imdt, tbl_acckashd, tbl_acckasdt');
+  const [sales, saleLines, purchases, purchaseLines, cash, totals, months] = await Promise.all([
+    db.query<IposHistDoc>(histDocs('tbl_ikhd', "'KSR','JL'"), [IPOS_OFFICE]),
+    db.query<IposHistLine>(histLines('tbl_ikdt', 'tbl_ikhd', "'KSR','JL'", true), [IPOS_OFFICE]),
+    db.query<IposHistDoc>(histDocs('tbl_imhd', "'BL'"), [IPOS_OFFICE]),
+    db.query<IposHistLine>(histLines('tbl_imdt', 'tbl_imhd', "'BL'", false), [IPOS_OFFICE]),
+    db.query<IposCashLine>(
+      `SELECT trim(h.notransaksi) AS notransaksi, to_char(h.tanggal, 'YYYY-MM-DD"T"HH24:MI:SS') AS tanggal,
+              d.nobaris, round(d.jumlah, 2)::text AS jumlah, nullif(trim(d.keterangan), '') AS keterangan
+       FROM tbl_acckasdt d JOIN tbl_acckashd h ON h.notransaksi = d.notransaksi
+       WHERE h.kodekantor = $1 AND h.tipe = 'KASO' AND d.jumlah > 0
+       ORDER BY h.tanggal, h.notransaksi, d.nobaris`,
+      [IPOS_OFFICE],
+    ),
+    db.query<Omit<IposHistoryCounts, 'months'>>(
+      `WITH ${LINE_COST},
+            l AS (SELECT c.cost, c.zero FROM tbl_ikdt d JOIN tbl_ikhd h ON h.notransaksi = d.notransaksi
+                  LEFT JOIN c ON c.iddetailtrs = d.iddetail WHERE h.kodekantor = $1 AND h.tipe IN ('KSR','JL'))
+       SELECT (SELECT count(*) FROM tbl_ikhd WHERE kodekantor = $1 AND tipe = 'KSR')::int AS ksr,
+              (SELECT round(coalesce(sum(totalakhir), 0), 2)::text FROM tbl_ikhd WHERE kodekantor = $1 AND tipe = 'KSR') AS "ksrTotal",
+              (SELECT count(*) FROM tbl_ikhd WHERE kodekantor = $1 AND tipe = 'JL')::int AS jl,
+              (SELECT round(coalesce(sum(totalakhir), 0), 2)::text FROM tbl_ikhd WHERE kodekantor = $1 AND tipe = 'JL') AS "jlTotal",
+              (SELECT coalesce(sum(round(cost, 2)), 0)::numeric(18,2)::text FROM l WHERE zero IS FALSE) AS "saleCost",
+              (SELECT count(*) FROM l WHERE zero IS NOT FALSE)::int AS "linesWithoutCost",
+              (SELECT count(*) FROM tbl_imhd WHERE kodekantor = $1 AND tipe = 'BL')::int AS purchases,
+              (SELECT round(coalesce(sum(totalakhir), 0), 2)::text FROM tbl_imhd WHERE kodekantor = $1 AND tipe = 'BL') AS "purchasesTotal",
+              (SELECT count(*) FROM tbl_acckashd WHERE kodekantor = $1 AND tipe = 'KASO')::int AS "cashOut",
+              (SELECT round(coalesce(sum(jumlah), 0), 2)::text FROM tbl_acckashd WHERE kodekantor = $1 AND tipe = 'KASO') AS "cashOutTotal"`,
+      [IPOS_OFFICE],
+    ),
+    db.query<IposHistoryCounts['months'][number]>(
+      `SELECT to_char(tanggal, 'YYYY-MM') AS month, tipe, count(*)::int AS count, round(sum(totalakhir), 2)::text AS total
+       FROM tbl_ikhd WHERE kodekantor = $1 AND tipe IN ('KSR','JL') GROUP BY 1, 2 ORDER BY 1, 2`,
+      [IPOS_OFFICE],
+    ),
+  ]);
+  return {
+    sales: sales.rows,
+    saleLines: saleLines.rows,
+    purchases: purchases.rows,
+    purchaseLines: purchaseLines.rows,
+    cash: cash.rows,
+    source: { ...totals.rows[0]!, months: months.rows },
+  };
 }

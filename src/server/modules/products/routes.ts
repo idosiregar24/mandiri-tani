@@ -9,10 +9,10 @@ export function productRoutes({ pool }: { pool: Pool }): Router {
   const router = Router();
 
   router.get('/products', requirePermission('products.read'), async (req, res) => {
-    sendPage(res, await service.list(pool, ProductListQuery.parse(req.query)));
+    sendPage(res, await service.list(pool, ProductListQuery.parse(req.query), req.ctx));
   });
   router.get('/products/:id', requirePermission('products.read'), async (req, res) => {
-    res.json({ data: await service.get(pool, parseId(req.params.id, 'Barang')) });
+    res.json({ data: await service.get(pool, parseId(req.params.id, 'Barang'), req.ctx) });
   });
   // Saving a product package also writes its prices → needs both permissions.
   router.post('/products', requirePermission('products.write'), requirePermission('prices.write'), async (req, res) => {

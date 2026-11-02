@@ -2,6 +2,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Boxes, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { dec } from '@shared/money';
 import type { ProductListItem } from '@shared/schemas/master';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { DataTable } from '@/components/shared/DataTable';
@@ -29,6 +30,7 @@ export function ProductList() {
   const navigate = useNavigate();
   const saved = (useLocation().state as { saved?: string } | null)?.saved;
   const canWrite = useCan('products.write');
+  const canCost = useCan('cost.read');
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState('all');
   const [status, setStatus] = useState<'active' | 'all'>('active');
@@ -62,22 +64,46 @@ export function ProductList() {
       {
         header: 'Satuan & harga jual',
         cell: ({ row }) => (
-          <ul className="space-y-0.5">
-            {row.original.units.map((u) => (
-              <li key={u.unitCode} className="flex justify-between gap-6 tabular-nums">
-                <span>
-                  {u.unitCode}
-                  {u.conversionQty !== '1' && (
-                    <span className="text-muted-foreground">
-                      {' '}
-                      = {formatNumber(u.conversionQty)} {row.original.baseUnitCode}
-                    </span>
-                  )}
-                </span>
-                <span>{formatRupiah(u.price)}</span>
-              </li>
-            ))}
-          </ul>
+          <div>
+            <ul className="space-y-0.5">
+              {row.original.units.map((u) => (
+                <li key={u.unitCode} className="flex justify-between gap-6 tabular-nums">
+                  <span>
+                    {u.unitCode}
+                    {u.conversionQty !== '1' && (
+                      <span className="text-muted-foreground">
+                        {' '}
+                        = {formatNumber(u.conversionQty)} {row.original.baseUnitCode}
+                      </span>
+                    )}
+                  </span>
+                  <span>{formatRupiah(u.price)}</span>
+                </li>
+              ))}
+            </ul>
+            {canCost && row.original.lastPurchaseCost && (
+              <p className="text-muted-foreground mt-1.5 border-t pt-1 text-xs tabular-nums">
+                Beli terakhir:{' '}
+                <span className="text-foreground font-medium">
+                  {formatRupiah(row.original.lastPurchaseCost)}
+                </span>{' '}
+                / {row.original.baseUnitCode}
+                {row.original.units.some((u) => dec(u.conversionQty).gt(1)) && (
+                  <span className="text-muted-foreground ml-1">
+                    (
+                    {row.original.units
+                      .filter((u) => dec(u.conversionQty).gt(1))
+                      .map(
+                        (u) =>
+                          `${formatRupiah(dec(row.original.lastPurchaseCost!).times(u.conversionQty).toFixed())}/${u.unitCode.toLowerCase()}`,
+                      )
+                      .join(', ')}
+                    )
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         ),
         meta: { className: 'w-80' },
       },
@@ -102,7 +128,7 @@ export function ProductList() {
         meta: { className: 'w-16', align: 'right' },
       },
     ],
-    [canWrite, navigate],
+    [canWrite, canCost, navigate],
   );
 
   return (

@@ -126,3 +126,19 @@ export const PrintDocument = z.object({
   pages: z.array(z.array(PrintLine).max(150)).min(1).max(30),
 });
 export type PrintDocument = z.infer<typeof PrintDocument>;
+
+/** "Simpan PDF" of the report on screen (sprint-10 S10-9): the page's A4 print view, saved where the Owner picks. */
+export const SavePdfRequest = z.object({
+  /** Suggested file name without folder, e.g. "laba-per-barang-2026-10". */
+  fileName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[\w\- ]+$/, 'Nama file hanya huruf, angka, spasi, - dan _.'),
+  landscape: z.boolean().default(false),
+});
+export type SavePdfRequest = z.input<typeof SavePdfRequest>;
+
+export type SavePdfResult =
+  { status: 'SAVED'; fileName: string } | { status: 'CANCELED' } | { status: 'FAILED'; message: string };

@@ -2,7 +2,17 @@
 // masalah data → 3) impor master (+ rekonsiliasi) → 4) impor stok awal (+ rekonsiliasi) → 5) piutang terbuka
 // & hutang yang dicentang (+ rekonsiliasi) → Selesai.
 // Reset data persiapan at the bottom. Owner only.
-import { CheckCircle2, FolderOpen, Loader2, PackageCheck, RotateCcw, Upload, Wallet, XCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  FolderOpen,
+  History as HistoryIcon,
+  Loader2,
+  PackageCheck,
+  RotateCcw,
+  Upload,
+  Wallet,
+  XCircle,
+} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import {
   IMPORT_PURPOSES,
@@ -10,6 +20,7 @@ import {
   type ImportBatch,
   type ImportPurpose,
   type IposArApInspectResult,
+  type IposHistoryInspectResult,
   type IposInspectResult,
   type IposStockInspectResult,
   type ReconciliationRow,
@@ -26,10 +37,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   useCommitArAp,
+  useCommitHistory,
   useCommitIpos,
   useCommitStock,
   useImportBatches,
   useInspectArAp,
+  useInspectHistory,
   useInspectIpos,
   useInspectStock,
   useResetPreparation,
@@ -73,6 +86,8 @@ export function IposImportPage() {
   const commitStock = useCommitStock();
   const inspectArAp = useInspectArAp();
   const commitArAp = useCommitArAp();
+  const inspectHistory = useInspectHistory();
+  const commitHistory = useCommitHistory();
   const batches = useImportBatches();
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<{ message: string; detail?: string } | null>(null);
@@ -80,6 +95,9 @@ export function IposImportPage() {
   const [masterResult, setMasterResult] = useState<ImportBatch | null>(null);
   const [stockResult, setStockResult] = useState<ImportBatch | null>(null);
   const [arApResult, setArApResult] = useState<ImportBatch | null>(null);
+  const [historyResult, setHistoryResult] = useState<ImportBatch | null>(null);
+
+  const done = scopesDone(batches.data ?? []);
 
   if (!canImport) return <Notice tone="warning">Hanya Owner yang boleh mengimpor data dari iPOS.</Notice>;
 
@@ -88,12 +106,15 @@ export function IposImportPage() {
     setMasterResult(null);
     setStockResult(null);
     setArApResult(null);
+    setHistoryResult(null);
     commit.reset();
     commitStock.reset();
     commitArAp.reset();
+    commitHistory.reset();
     inspect.reset();
     inspectStock.reset();
     inspectArAp.reset();
+    inspectHistory.reset();
   };
 
   const choose = async () => {
@@ -107,6 +128,7 @@ export function IposImportPage() {
         inspect.mutate();
         inspectStock.mutate();
         inspectArAp.mutate();
+        inspectHistory.mutate();
       }
     } finally {
       setPicking(false);
@@ -123,6 +145,7 @@ export function IposImportPage() {
           // Stock and receivables are the next scopes from the same file: refresh their previews.
           inspectStock.mutate();
           inspectArAp.mutate();
+          inspectHistory.mutate();
         },
       },
     );
@@ -145,8 +168,20 @@ export function IposImportPage() {
         onSuccess: (batch) => {
           setArApResult(batch);
           inspectArAp.reset();
-          // Last scope done — the temporary iPOS copy is no longer needed (FR-MIG-01).
-          void bridge?.cleanupIposImport();
+          // Both late scopes done — the temporary iPOS copy is no longer needed (FR-MIG-01).
+          if (historyResult || done.history) void bridge?.cleanupIposImport();
+        },
+      },
+    );
+
+  const runHistoryImport = () =>
+    commitHistory.mutate(
+      { purpose },
+      {
+        onSuccess: (batch) => {
+          setHistoryResult(batch);
+          inspectHistory.reset();
+          if (arApResult || done.receivables) void bridge?.cleanupIposImport();
         },
       },
     );
@@ -159,13 +194,13 @@ export function IposImportPage() {
   const preview = inspect.data;
   const stockPreview = inspectStock.data;
   const arApPreview = inspectArAp.data;
-  const fileOpen = Boolean(preview || stockPreview || arApPreview || masterResult);
-  const done = scopesDone(batches.data ?? []);
+  const historyPreview = inspectHistory.data;
+  const fileOpen = Boolean(preview || stockPreview || arApPreview || historyPreview || masterResult);
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Impor dari iPOS"
-        description="Pindahkan data master (barang, harga, pelanggan, supplier, rekening), stok awal, lalu piutang & hutang dari backup iPOS 5."
+        description="Pindahkan data master (barang, harga, pelanggan, supplier, rekening), stok awal, piutang & hutang, lalu histori 2 tahun dari backup iPOS 5."
       />
 
       {!bridge && <Notice tone="warning">Impor hanya bisa dijalankan dari aplikasi di komputer toko.</Notice>}
@@ -194,7 +229,8 @@ export function IposImportPage() {
               inspect.isPending ||
               commit.isPending ||
               commitStock.isPending ||
-              commitArAp.isPending
+              commitArAp.isPending ||
+              commitHistory.isPending
             }
           >
             {picking || inspect.isPending ? <Loader2 className="animate-spin" /> : <FolderOpen />}
@@ -247,6 +283,17 @@ export function IposImportPage() {
       )}
       {commitArAp.isError && <Notice tone="error">{commitArAp.error.message}</Notice>}
       {arApResult && <Reconciliation n={6} title="Piutang & hutang masuk — cocokkan dengan iPOS" batch={arApResult} />}
+
+      {historyPreview && (
+        <HistoryStep
+          preview={historyPreview}
+          purpose={purpose}
+          onImport={runHistoryImport}
+          importing={commitHistory.isPending}
+        />
+      )}
+      {commitHistory.isError && <Notice tone="error">{commitHistory.error.message}</Notice>}
+      {historyResult && <Reconciliation n={8} title="Histori masuk — cocokkan dengan iPOS" batch={historyResult} />}
 
       <History batches={batches.data ?? []} />
 
@@ -471,10 +518,70 @@ function ArApStep({
 }
 
 /** Which scopes are already in the app (latest COMMITTED batch per scope). */
-function scopesDone(batches: ImportBatch[]): Record<'master' | 'stock' | 'receivables', ImportBatch | null> {
-  const find = (scope: 'master' | 'stock' | 'receivables') =>
-    batches.find((b) => b.status === 'COMMITTED' && b.scope.includes(scope)) ?? null;
-  return { master: find('master'), stock: find('stock'), receivables: find('receivables') };
+type DoneScope = 'master' | 'stock' | 'receivables' | 'history';
+
+/**
+ * Step 7 (FR-MIG-02 "Histori", sprint-10 S10-10): old sales notes, purchase invoices and cash-outs
+ * for the reports. No stock, money or receivable moves — those came from their own scopes.
+ */
+function HistoryStep({
+  preview,
+  purpose,
+  onImport,
+  importing,
+}: {
+  preview: IposHistoryInspectResult;
+  purpose: ImportPurpose;
+  onImport: () => void;
+  importing: boolean;
+}) {
+  const c = preview.counts;
+  return (
+    <Step n={7} title="Impor histori 2 tahun">
+      <p className="text-muted-foreground text-base">
+        Nota penjualan, faktur pembelian, dan kas keluar lama dari iPOS masuk ke laporan (penjualan, laba, pembelian,
+        biaya). Stok, kas, dan piutang tidak berubah — itu sudah dari langkah sebelumnya.
+      </p>
+      {preview.fingerprint.length > 0 && (
+        <Notice tone="error" title="Struktur tabel histori tidak cocok — impor histori dihentikan" className="mt-4">
+          {preview.fingerprint
+            .map((f) => `${f.table}${f.missingColumns.length ? ` (${f.missingColumns.join(', ')})` : ''}`)
+            .join(' · ')}
+        </Notice>
+      )}
+      {c && (
+        <dl className="mt-4 grid gap-3 sm:grid-cols-4">
+          {[
+            ['Nota kasir (KSR)', `${formatNumber(String(c.ksr))} · ${formatRupiah(c.ksrTotal)}`],
+            ['Faktur jual (JL)', `${formatNumber(String(c.jl))} · ${formatRupiah(c.jlTotal)}`],
+            ['Faktur beli (BL)', `${formatNumber(String(c.purchases))} · ${formatRupiah(c.purchasesTotal)}`],
+            ['Kas keluar', `${formatNumber(String(c.cashOut))} · ${formatRupiah(c.cashOutTotal)}`],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-surface-muted rounded-lg border p-3">
+              <dt className="text-muted-foreground text-sm">{label}</dt>
+              <dd className="mt-1 text-base font-semibold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <Issues issues={preview.issues} />
+      <div className="mt-5">
+        {preview.blocker ? (
+          <Notice tone="warning">{preview.blocker}</Notice>
+        ) : (
+          <Button size="lg" className="h-12 text-base" onClick={onImport} disabled={importing}>
+            {importing ? <Loader2 className="animate-spin" /> : <HistoryIcon />} Impor Histori (
+            {PURPOSE_LABELS[purpose]})
+          </Button>
+        )}
+      </div>
+    </Step>
+  );
+}
+
+function scopesDone(batches: ImportBatch[]): Record<DoneScope, ImportBatch | null> {
+  const find = (scope: DoneScope) => batches.find((b) => b.status === 'COMMITTED' && b.scope.includes(scope)) ?? null;
+  return { master: find('master'), stock: find('stock'), receivables: find('receivables'), history: find('history') };
 }
 
 function ScopeStatus({ done }: { done: ReturnType<typeof scopesDone> }) {
@@ -482,6 +589,7 @@ function ScopeStatus({ done }: { done: ReturnType<typeof scopesDone> }) {
     { label: 'Data master', hint: 'barang, satuan, harga, pelanggan, supplier, rekening', batch: done.master },
     { label: 'Stok awal', hint: 'jumlah stok & lapisan HPP FIFO', batch: done.stock },
     { label: 'Piutang & hutang', hint: 'nota belum lunas & hutang supplier yang dicentang', batch: done.receivables },
+    { label: 'Histori 2 tahun', hint: 'nota jual, faktur beli & kas keluar lama — untuk laporan', batch: done.history },
   ];
   return (
     <section className="divide-y rounded-xl border">

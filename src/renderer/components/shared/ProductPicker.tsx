@@ -3,10 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Search } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
+import { dec } from '@shared/money';
 import type { ProductListItem } from '@shared/schemas/master';
 import { Input } from '@/components/ui/input';
 import { apiGetPage, toQuery } from '@/lib/api-client';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatRupiah } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 
@@ -117,12 +118,32 @@ export function ProductPicker({
                 <span className="block text-base font-medium">{p.name}</span>
                 <span className="text-muted-foreground font-mono text-sm">{p.sku}</span>
               </span>
-              <span className="text-muted-foreground text-sm">
-                {p.units
-                  .map((u) =>
-                    u.conversionQty === '1' ? u.unitCode : `${u.unitCode} (${formatNumber(u.conversionQty)})`,
-                  )
-                  .join(' · ')}
+              <span className="text-muted-foreground text-right text-sm">
+                <div>
+                  {p.units
+                    .map((u) =>
+                      u.conversionQty === '1' ? u.unitCode : `${u.unitCode} (${formatNumber(u.conversionQty)})`,
+                    )
+                    .join(' · ')}
+                </div>
+                {p.lastPurchaseCost && (
+                  <div className="text-foreground/80 text-xs font-medium tabular-nums">
+                    beli terakhir {formatRupiah(p.lastPurchaseCost)} / {p.baseUnitCode}
+                    {p.units.some((u) => dec(u.conversionQty).gt(1)) && (
+                      <span className="text-muted-foreground ml-1 font-normal">
+                        (
+                        {p.units
+                          .filter((u) => dec(u.conversionQty).gt(1))
+                          .map(
+                            (u) =>
+                              `${formatRupiah(dec(p.lastPurchaseCost!).times(u.conversionQty).toFixed())}/${u.unitCode.toLowerCase()}`,
+                          )
+                          .join(', ')}
+                        )
+                      </span>
+                    )}
+                  </div>
+                )}
               </span>
             </li>
           ))}

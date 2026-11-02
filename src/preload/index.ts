@@ -21,6 +21,7 @@ const bridge: PosBridge = {
   savePrinterSettings: (settings) => ipcRenderer.invoke(IPC.printerSettingsSave, settings),
   chooseIposBackup: () => ipcRenderer.invoke(IPC.importChooseIpos),
   cleanupIposImport: () => ipcRenderer.invoke(IPC.importCleanup),
+  saveReportPdf: (request) => ipcRenderer.invoke(IPC.reportSavePdf, request),
 };
 
 contextBridge.exposeInMainWorld('pos', bridge);

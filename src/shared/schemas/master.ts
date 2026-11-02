@@ -307,6 +307,8 @@ export interface Product {
   isActive: boolean;
   units: ProductUnit[];
   updatedAt: string;
+  /** cost.read only: last purchase price per base unit, when known */
+  lastPurchaseCost?: string | null;
 }
 
 /** One row of the product list: base unit + the general price of each unit. */
@@ -319,6 +321,8 @@ export interface ProductListItem {
   isActive: boolean;
   /** e.g. [{ unitCode: 'KG', conversionQty: '1', price: '15000.00' }, { unitCode: 'ZAK', conversionQty: '50', price: '640000.00' }] */
   units: { unitCode: string; conversionQty: string; price: string | null }[];
+  /** cost.read only: last purchase price per base unit, when known */
+  lastPurchaseCost?: string | null;
 }
 
 export const ProductListQuery = z.object({
