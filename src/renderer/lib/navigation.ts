@@ -20,6 +20,7 @@ import {
   Wallet,
   Warehouse,
   PackageCheck,
+  Wifi,
 } from 'lucide-react';
 import { hasPermission, type Permission, type Role } from '@shared/permissions';
 
@@ -84,6 +85,7 @@ export const NAV: NavGroup[] = [
   {
     label: 'Pengaturan',
     items: [
+      { label: 'Koneksi & Sinkron', to: '/koneksi', icon: Wifi, permission: 'devices.manage' },
       { label: 'Impor iPOS', to: '/impor-ipos', icon: FileInput, permission: 'imports.ipos' },
       { label: 'Uji Cetak', to: '/uji-cetak', icon: Printer, permission: 'settings.write' },
       { label: 'Profil Toko', to: '/pengaturan', icon: Building2, permission: 'settings.write', soon: true },

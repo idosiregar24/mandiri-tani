@@ -12,6 +12,7 @@ import type { LoginMethod } from '@shared/schemas/auth';
 import type { Pool } from '../db/pool';
 import { AppError } from '../lib/errors';
 import { resolveSession, useGrant } from '../modules/auth/service';
+import * as devicesRepo from '../modules/devices/repo';
 
 export interface RequestCtx {
   role: Role;
@@ -21,7 +22,7 @@ export interface RequestCtx {
   deviceId: string;
   sessionId: string;
   loginMethod: LoginMethod;
-  via: 'SESSION';
+  via: 'SESSION' | 'DEVICE';
   requestId: string;
   ip: string | null;
   /** Set when an Owner-PIN grant authorized this request (FR-POS-20) → audit_logs.approved_by. */
@@ -68,27 +69,74 @@ export function requireLocalAccess(opts: {
   };
 }
 
-/** Bearer session token → req.ctx (S2-3). */
+/** Bearer session or device token → req.ctx (S2-3, S11-3). */
 export function authenticate(opts: { pool: Pool }): RequestHandler {
   return async (req, _res, next) => {
     const token = /^Bearer\s+(\S+)$/i.exec(req.header('authorization') ?? '')?.[1];
     if (!token) throw new AppError('UNAUTHENTICATED', 'Belum masuk. Silakan masuk dulu.', 401);
     const session = await resolveSession(opts.pool, token);
-    if (!session) throw new AppError('UNAUTHENTICATED', 'Sesi berakhir. Silakan masuk lagi.', 401);
-    req.ctx = {
-      role: session.user.role,
-      userId: session.user.id,
-      username: session.user.username,
-      fullName: session.user.fullName,
-      deviceId: session.deviceId,
-      sessionId: session.sessionId,
-      loginMethod: session.method,
-      via: 'SESSION',
-      requestId: req.id,
-      ip: req.ip ?? null,
-      approvedBy: null,
-    };
-    next();
+    if (session) {
+      req.ctx = {
+        role: session.user.role,
+        userId: session.user.id,
+        username: session.user.username,
+        fullName: session.user.fullName,
+        deviceId: session.deviceId,
+        sessionId: session.sessionId,
+        loginMethod: session.method,
+        via: 'SESSION',
+        requestId: req.id,
+        ip: req.ip ?? null,
+        approvedBy: null,
+      };
+      return next();
+    }
+
+    // Try resolving as a paired device token (S11-3)
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const device = await devicesRepo.getByTokenHash(opts.pool, tokenHash);
+    if (device) {
+      const clientTimeStr =
+        req.header('x-device-time') ?? (typeof req.query.device_time === 'string' ? req.query.device_time : null);
+      let skewMs: number | null = null;
+      if (clientTimeStr) {
+        const parsed = Date.parse(clientTimeStr);
+        if (!Number.isNaN(parsed)) {
+          skewMs = Math.abs(parsed - Date.now());
+        }
+      }
+      await devicesRepo.updateLastSeen(opts.pool, device.id, skewMs);
+
+      // Find user who paired this device, or fallback to first active user
+      const userRes = await opts.pool.query<{ id: string }>(
+        `SELECT created_by AS id FROM device_pairing_codes WHERE used_by_device_id = $1 AND used_at IS NOT NULL ORDER BY used_at DESC LIMIT 1`,
+        [device.id],
+      );
+      let effectiveUserId = userRes.rows[0]?.id;
+      if (!effectiveUserId) {
+        const fallbackRes = await opts.pool.query<{ id: string }>(
+          `SELECT id FROM users WHERE is_active = true ORDER BY created_at ASC LIMIT 1`,
+        );
+        effectiveUserId = fallbackRes.rows[0]?.id ?? device.id;
+      }
+
+      req.ctx = {
+        role: 'KASIR', // Mobile staff / terminal default role
+        userId: effectiveUserId,
+        username: device.code,
+        fullName: device.name,
+        deviceId: device.id,
+        sessionId: device.id,
+        loginMethod: 'PIN',
+        via: 'DEVICE',
+        requestId: req.id,
+        ip: req.ip ?? null,
+        approvedBy: null,
+      };
+      return next();
+    }
+
+    throw new AppError('UNAUTHENTICATED', 'Sesi berakhir atau token tidak valid. Silakan masuk lagi.', 401);
   };
 }
 

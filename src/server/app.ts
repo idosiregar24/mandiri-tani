@@ -12,6 +12,7 @@ import { arApRoutes } from './modules/ar-ap/routes';
 import { authHubRoutes, authSessionRoutes } from './modules/auth/routes';
 import { cashRoutes } from './modules/cash/routes';
 import { customerRoutes } from './modules/customers/routes';
+import { deviceProtectedRoutes, devicePublicRoutes } from './modules/devices/routes';
 import { healthRoutes } from './modules/health/routes';
 import { importRoutes } from './modules/imports/routes';
 import type { ImportHooks } from './modules/imports/service';
@@ -27,6 +28,7 @@ import { settingsRoutes } from './modules/settings/routes';
 import { setupRoutes } from './modules/setup/routes';
 import { stockRoutes } from './modules/stock/routes';
 import { supplierRoutes } from './modules/suppliers/routes';
+import { syncRoutes } from './modules/sync/routes';
 
 export interface AppDeps {
   pool: Pool;
@@ -77,6 +79,7 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
 
   const api = express.Router();
   api.use(healthRoutes({ pool, appVersion }));
+  api.use(devicePublicRoutes({ pool }));
   // Before login: only from this PC's own window (local access key, sprint-2 S2-1).
   api.use(HUB_PATHS, requireLocalAccess({ localAccessKey, hubDeviceId: hubDeviceIdLoader(pool) }));
   api.use(authHubRoutes({ pool }));
@@ -99,6 +102,8 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   api.use(cashRoutes({ pool }));
   api.use(reportRoutes({ pool }));
   api.use(settingsRoutes({ pool }));
+  api.use(deviceProtectedRoutes({ pool }));
+  api.use(syncRoutes({ pool }));
   if (iposDb) api.use(importRoutes({ pool, iposDb, hooks }));
   api.use(notFound);
   app.use('/api/v1', api);

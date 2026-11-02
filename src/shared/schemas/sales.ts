@@ -8,6 +8,8 @@ export const SALE_CHANNELS = ['KASIR', 'FAKTUR'] as const;
 export type SaleChannel = (typeof SALE_CHANNELS)[number];
 export const SALE_STATUSES = ['HELD', 'COMPLETED', 'VOIDED'] as const;
 export type SaleStatus = (typeof SALE_STATUSES)[number];
+export const SALE_SOURCES = ['APP', 'SYNC', 'IPOS_IMPORT', 'OPENING_PICKUP'] as const;
+export type SaleSource = (typeof SALE_SOURCES)[number];
 
 const PositiveMoney = Money.refine((v) => !/^0+(\.0+)?$/.test(v), 'Harus lebih dari Rp 0.');
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal tidak valid.');

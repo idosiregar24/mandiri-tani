@@ -5,7 +5,7 @@ import { hasPermission, type Permission } from '@shared/permissions';
 import { dec, Decimal, toMoney, toQty } from '@shared/money';
 import { allocateDiscount, lineTotal } from '@shared/pos';
 import { resolvePrice, type PriceSource } from '@shared/pricing';
-import { CompleteSaleInput, SaleListQuery, VoidSaleInput, type Sale, type SaleListItem } from '@shared/schemas/sales';
+import { CompleteSaleInput, SaleListQuery, VoidSaleInput, type Sale, type SaleListItem, type SaleSource } from '@shared/schemas/sales';
 import { PosSettings } from '@shared/schemas/settings';
 import { uuidv7 } from '@shared/uuid';
 import type { Pool, Queryable } from '../../db/pool';
@@ -73,7 +73,12 @@ export async function complete(
   pool: Pool,
   ctx: RequestCtx,
   raw: unknown,
-  opts: { idempotencyKey: string | null; grant: string | null },
+  opts: {
+    idempotencyKey: string | null;
+    grant: string | null;
+    source?: SaleSource;
+    trxAt?: Date;
+  },
 ): Promise<Sale> {
   const input = CompleteSaleInput.parse(raw);
   const id = await withTransaction(pool, async (tx) => {
@@ -82,7 +87,7 @@ export async function complete(
       const existing = await repo.saleIdByClientOp(tx, opts.idempotencyKey);
       if (existing) return existing;
     }
-    const now = clock.now();
+    const now = opts.trxAt ?? clock.now();
     const needs: Permission[] = [];
     const wh = await defaultWarehouse(tx);
 
@@ -201,7 +206,10 @@ export async function complete(
           sourceLineId: l.id,
           movedAt: now,
         })),
-        { createdBy: ctx.userId },
+        {
+          source: opts.source === 'SYNC' ? 'SYNC' : 'LOCAL',
+          createdBy: ctx.userId,
+        },
       );
       stocked.forEach((l, i) => costs.set(l.id, applied[i]!.unitCost));
       // S6-5: below cost is judged on the FIFO cost actually consumed.
@@ -210,13 +218,16 @@ export async function complete(
       }
     }
 
-    const approvedBy = await approveInTx(tx, ctx, needs, opts.grant);
+    const approvedBy = opts.source === 'SYNC'
+      ? (opts.grant ? await approveInTx(tx, ctx, needs, opts.grant) : null)
+      : await approveInTx(tx, ctx, needs, opts.grant);
     const number = await nextDocNumber(tx, input.channel === 'KASIR' ? 'KSR' : 'JL', wh.code, now);
 
     await repo.insertSale(tx, {
       id: saleId,
       number,
       channel: input.channel,
+      source: opts.source ?? 'APP',
       deviceId: ctx.deviceId,
       cashierId: ctx.userId,
       customerId: customer.id,

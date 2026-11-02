@@ -1,6 +1,6 @@
 // SQL for sales documents (sprint-6). No business rules here.
 import type { PriceRow } from '@shared/pricing';
-import type { HeldSaleItem, Sale, SaleLine, SaleListItem, SalePayment } from '@shared/schemas/sales';
+import type { HeldSaleItem, Sale, SaleLine, SaleListItem, SalePayment, SaleSource } from '@shared/schemas/sales';
 import type { Queryable } from '../../db/pool';
 import { likePattern } from '../../lib/http';
 
@@ -112,6 +112,7 @@ export interface SaleRow {
   id: string;
   number: string;
   channel: Sale['channel'];
+  source?: SaleSource;
   deviceId: string;
   cashierId: string;
   customerId: string;
@@ -136,14 +137,15 @@ export interface SaleRow {
 
 export async function insertSale(db: Queryable, s: SaleRow): Promise<void> {
   await db.query(
-    `INSERT INTO sales (id, number, status, channel, device_id, cashier_id, customer_id, customer_group_id, warehouse_id,
+    `INSERT INTO sales (id, number, status, channel, source, device_id, cashier_id, customer_id, customer_group_id, warehouse_id,
        trx_at, subtotal, discount_amount, other_charges, other_charges_note, total, fulfillment_status, pickup_note,
        paid_amount, credit_amount, change_amount, due_date, note, approved_by, client_op_id)
-     VALUES ($1,$2,'COMPLETED',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+     VALUES ($1,$2,'COMPLETED',$3,coalesce($4, 'APP'),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       s.id,
       s.number,
       s.channel,
+      s.source ?? 'APP',
       s.deviceId,
       s.cashierId,
       s.customerId,

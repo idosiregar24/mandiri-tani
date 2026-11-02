@@ -50,6 +50,10 @@ export default async function setup(project: TestProject) {
 
   return async () => {
     await manager.stop(10);
-    rmSync(root, { recursive: true, force: true });
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      // Ignore cleanup error on Windows temp folder locks
+    }
   };
 }

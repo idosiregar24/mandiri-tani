@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { CashBookPage } from '@/pages/cash/CashBookPage';
+import { ConnectionPage } from '@/pages/devices/ConnectionPage';
 import { CustomerList } from '@/pages/customers/CustomerList';
 import { ReportsIndex } from '@/pages/reports/ReportsIndex';
 import { HomePage } from '@/pages/home/HomePage';
@@ -86,6 +87,7 @@ const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('@/pages/reports/StockReportPage')).StockReportPage }),
       },
       { path: '/impor-ipos', element: <IposImportPage /> },
+      { path: '/koneksi', element: <ConnectionPage /> },
       { path: '/uji-cetak', element: <PrintTestPage /> },
       { path: '*', element: <HomePage /> },
     ],
