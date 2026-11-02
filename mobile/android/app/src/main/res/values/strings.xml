@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mandiri Tani Mobile</string>
+    <string name="title_activity_main">Mandiri Tani Mobile</string>
+    <string name="package_name">com.mandiritani.pos</string>
+    <string name="custom_url_scheme">com.mandiritani.pos</string>
+</resources>

@@ -38,3 +38,17 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# --- Mobile (Android & Capacitor) ---
+mobile/node_modules/
+mobile/dist/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/.idea/
+mobile/android/*.iml
+mobile/android/app/*.iml
+mobile/android/local.properties
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+

@@ -17,7 +17,11 @@
     "test:watch": "vitest",
     "fetch:postgres": "node scripts/fetch-postgres.mjs",
     "fetch:electron": "node scripts/fetch-electron.mjs",
-    "dist": "npm run build && electron-builder --win --x64"
+    "dist": "npm run build && electron-builder --win --x64",
+    "mobile:dev": "npm --prefix mobile run dev",
+    "mobile:build": "npm --prefix mobile run build",
+    "mobile:cap:sync": "npm --prefix mobile run cap:sync",
+    "mobile:apk": "powershell -Command \"$env:JAVA_HOME = 'C:\\Program Files\\Android\\Android Studio\\jbr'; $env:ANDROID_HOME = 'C:\\Users\\user\\AppData\\Local\\Android\\Sdk'; cd mobile/android; ./gradlew.bat assembleDebug; Copy-Item app/build/outputs/apk/debug/app-debug.apk ../../release/MandiriTaniMobile-0.1.0.apk -Force\""
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
