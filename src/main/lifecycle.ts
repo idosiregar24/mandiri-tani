@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { Logger } from 'pino';
 import { LIFECYCLE_MESSAGES, type LifecycleState, type LifecycleStatus } from '@shared/lifecycle';
 import { createServer, type PosServer } from '../server/server';
+import { createDailyBackupIfNeeded } from '../server/modules/backups/service';
 import { readConfig, updateConfig } from './config';
 import type { AppPaths } from './paths';
 import { PgError, PgManager, type IposRestoreInfo } from './pg/PgManager';
@@ -125,8 +126,12 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
         migrationsDir: paths.migrationsDir,
         staticDir: this.opts.serveRenderer ? paths.rendererDir : undefined,
         localAccessKey: this.localAccessKey,
-        // Only the main process may run pg_dump (golden rule 8) — the server asks through this hook (S3-4).
-        hooks: { backup: (label) => this.requirePg().backupDatabase(paths.backupDir, label) },
+        hooks: {
+          backupDir: paths.backupDir,
+          backup: (label) => this.requirePg().backupDatabase(paths.backupDir, label),
+          restore: (file) => this.requirePg().restoreAppBackup(file),
+          verifyBackup: (file) => this.requirePg().verifyBackup(file),
+        },
       });
       await this.server.migrate();
 
@@ -134,6 +139,7 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
       await this.server.start();
 
       this.set('READY');
+      void this.runDailyBackup();
     } catch (err) {
       logger.error({ err }, 'boot failed');
       this.set('FATAL', describe(err));
@@ -153,6 +159,19 @@ export class Lifecycle extends EventEmitter<{ change: [LifecycleStatus] }> {
 
   async dropIposImport(): Promise<void> {
     await this.pg?.dropIposImport();
+  }
+
+  private async runDailyBackup(): Promise<void> {
+    if (!this.pg) return;
+    try {
+      await createDailyBackupIfNeeded(
+        this.opts.paths.backupDir,
+        (dir, label) => this.requirePg().backupDatabase(dir, label),
+        this.opts.logger.child({ component: 'daily-backup' }),
+      );
+    } catch (err) {
+      this.opts.logger.warn({ err }, 'daily backup background task failed');
+    }
   }
 
   /** After sleep/hibernate: make sure PostgreSQL is still up (PRD §3.7). */

@@ -11,10 +11,11 @@ import { requestContext } from './middleware/request-id';
 import { arApRoutes } from './modules/ar-ap/routes';
 import { auditLogsRoutes } from './modules/audit-logs/routes';
 import { authHubRoutes, authSessionRoutes } from './modules/auth/routes';
+import { backupRoutes, type BackupHooks } from './modules/backups/routes';
 import { cashRoutes } from './modules/cash/routes';
 import { customerRoutes } from './modules/customers/routes';
 import { deviceProtectedRoutes, devicePublicRoutes } from './modules/devices/routes';
-import { healthRoutes } from './modules/health/routes';
+import { diagnosticsRoutes, publicHealthRoutes } from './modules/health/routes';
 import { importRoutes } from './modules/imports/routes';
 import type { ImportHooks } from './modules/imports/service';
 import { masterRoutes } from './modules/masters/routes';
@@ -43,8 +44,8 @@ export interface AppDeps {
   localAccessKey?: string;
   /** Temporary iPOS database restored by the main process (sprint-3 S3-3). */
   iposDb?: DbConfig;
-  /** Things only the main process can do (backups via pg_dump — sprint-3 S3-4). */
-  hooks?: ImportHooks;
+  /** Things only the main process can do (backups via pg_dump — sprint-3 S3-4, sprint-13 S13-1). */
+  hooks?: ImportHooks & BackupHooks;
   /** Built renderer (out/renderer). Served at / in production so UI and API share one origin (ADR-01). */
   staticDir?: string;
 }
@@ -80,7 +81,7 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   app.locals.pool = pool; // read by requirePermission() to use Owner-PIN grants
 
   const api = express.Router();
-  api.use(healthRoutes({ pool, appVersion }));
+  api.use(publicHealthRoutes({ pool, appVersion }));
   api.use(devicePublicRoutes({ pool }));
   // Before login: only from this PC's own window (local access key, sprint-2 S2-1).
   api.use(HUB_PATHS, requireLocalAccess({ localAccessKey, hubDeviceId: hubDeviceIdLoader(pool) }));
@@ -106,6 +107,8 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   api.use(settingsRoutes({ pool }));
   api.use(usersRoutes({ pool }));
   api.use(auditLogsRoutes({ pool }));
+  api.use(backupRoutes({ pool, hooks }));
+  api.use(diagnosticsRoutes({ pool, appVersion, backupDir: hooks?.backupDir }));
   api.use(deviceProtectedRoutes({ pool }));
   api.use(syncRoutes({ pool }));
   if (iposDb) api.use(importRoutes({ pool, iposDb, hooks }));

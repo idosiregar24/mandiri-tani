@@ -437,6 +437,68 @@ export class PgManager {
     return file;
   }
 
+  /** Verifies that a dump file is a valid PostgreSQL custom-format dump. */
+  async verifyBackup(file: string): Promise<boolean> {
+    const toc = await this.run('pg_restore', ['-l', file], 60_000);
+    return toc.code === 0 && toc.stdout.length > 0;
+  }
+
+  /**
+   * FR-SYS-12, sprint-13: Restore application backup.
+   * Restores into a fresh `mandiri_tani_restore`, verifies, and atomically swaps
+   * it with the active database, archiving the previous database as `mandiri_tani_old_<ts>`.
+   */
+  async restoreAppBackup(file: string): Promise<void> {
+    const ok = await this.verifyBackup(file);
+    if (!ok) {
+      throw new PgError('File backup tidak valid atau rusak.');
+    }
+
+    const restoreDb = `${this.opts.database}_restore`;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const oldDb = `${this.opts.database}_old_${stamp.replace(/-/g, '_')}`;
+
+    await this.asSuperuser(async (c) => {
+      await c.query(`DROP DATABASE IF EXISTS ${c.escapeIdentifier(restoreDb)} WITH (FORCE)`);
+      await c.query(`CREATE DATABASE ${c.escapeIdentifier(restoreDb)} OWNER ${c.escapeIdentifier(this.opts.appUser)} ENCODING 'UTF8'`);
+    });
+
+    const r = await this.run(
+      'pg_restore',
+      [
+        '--no-owner',
+        '--no-privileges',
+        '-h',
+        '127.0.0.1',
+        '-p',
+        String(this.currentPort),
+        '-U',
+        this.opts.appUser,
+        '-d',
+        restoreDb,
+        file,
+      ],
+      15 * 60_000,
+      true,
+    );
+
+    if (r.code !== 0) {
+      await this.asSuperuser(async (c) => {
+        await c.query(`DROP DATABASE IF EXISTS ${c.escapeIdentifier(restoreDb)} WITH (FORCE)`);
+      }).catch(() => undefined);
+      throw new PgError('Pemulihan database dari file backup gagal.', r.stderr);
+    }
+
+    // Atomic swap
+    await this.asSuperuser(async (c) => {
+      await c.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid != pg_backend_pid()`, [this.opts.database]);
+      await c.query(`ALTER DATABASE ${c.escapeIdentifier(this.opts.database)} RENAME TO ${c.escapeIdentifier(oldDb)}`);
+      await c.query(`ALTER DATABASE ${c.escapeIdentifier(restoreDb)} RENAME TO ${c.escapeIdentifier(this.opts.database)}`);
+    });
+
+    this.log.info({ file, oldDb }, 'database successfully restored and swapped');
+  }
+
   /**
    * FR-MIG-01, sprint-3 S3-3: restore ONLY the tables and their data of an iPOS 5 backup
    * (`.i5bu` = pg_dump custom format from PG 9.5) into a fresh `ipos_import` database owned

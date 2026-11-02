@@ -10,6 +10,7 @@ import type { Role } from '@shared/permissions';
 import type { LoginResult } from '@shared/schemas/auth';
 import { uuidv7 } from '@shared/uuid';
 import { hashSecret } from '../src/server/lib/passwords';
+import type { BackupHooks } from '../src/server/modules/backups/routes';
 import type { ImportHooks } from '../src/server/modules/imports/service';
 import { createServer, type PosServer } from '../src/server/server';
 import type { DbConfig, Pool } from '../src/server/db/pool';
@@ -59,7 +60,7 @@ export interface TestApiOptions {
   ipos?: boolean;
   /** An already restored iPOS database to import from instead of the fixture (test/real-backup.test.ts). */
   iposDb?: DbConfig;
-  hooks?: ImportHooks;
+  hooks?: ImportHooks & BackupHooks;
   /** Start with no user at all, like a fresh install before the setup wizard. */
   noUsers?: boolean;
 }

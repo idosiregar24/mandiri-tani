@@ -8,6 +8,7 @@ import { runMigrations, type MigrationResult } from './db/migrate';
 import { createPool, type DbConfig, type Pool } from './db/pool';
 import { ensureHubDevice } from './db/bootstrap';
 import { AppError } from './lib/errors';
+import type { BackupHooks } from './modules/backups/routes';
 import type { ImportHooks } from './modules/imports/service';
 
 export interface ServerConfig {
@@ -22,7 +23,7 @@ export interface ServerConfig {
   localAccessKey?: string;
   /** Database the iPOS backup is restored into, on the same cluster as `db` (default ipos_import). */
   iposDatabase?: string;
-  hooks?: ImportHooks;
+  hooks?: ImportHooks & BackupHooks;
 }
 
 export interface PosServer {
