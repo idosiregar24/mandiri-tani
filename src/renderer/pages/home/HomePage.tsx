@@ -1,4 +1,4 @@
-// Beranda (sprint-10 E4, FR-FIN-09): the Owner's dashboard — turnover & gross profit today / this
+// Beranda: Owner overview — turnover & gross profit today / this
 // month vs the previous period, top products, what needs attention — then the system status.
 // A cashier sees only their own sales.
 import {
@@ -35,13 +35,13 @@ export function HomePage() {
     <div className="space-y-8">
       <PageHeader
         title="Beranda"
-        description="Ringkasan penjualan dan data toko Mandiri Tani."
+        description="Ringkasan penjualan dan operasional toko Mandiri Tani."
         actions={
           canImport &&
           totals.data?.products === 0 && (
-            <Button asChild size="lg" className="h-11 text-base">
+            <Button asChild size="lg" className="h-10 text-sm">
               <Link to="/impor-ipos">
-                <FileInput /> Impor dari iPOS
+                <FileInput className="size-4" /> Impor dari iPOS
               </Link>
             </Button>
           )
@@ -57,6 +57,8 @@ export function HomePage() {
           value={n(totals.data?.products)}
           hint="Barang aktif & nonaktif"
           to="/barang"
+          showInfo
+          infoTooltip="Total master data produk pertanian"
         />
         <StatCard
           label="Pelanggan"
@@ -64,6 +66,8 @@ export function HomePage() {
           value={n(totals.data?.customers)}
           hint="Termasuk pelanggan UMUM"
           to="/pelanggan"
+          showInfo
+          infoTooltip="Total kontak pelanggan terdaftar"
         />
         <StatCard
           label="Supplier"
@@ -71,11 +75,17 @@ export function HomePage() {
           value={n(totals.data?.suppliers)}
           hint="Pemasok barang"
           to="/supplier"
+          showInfo
+          infoTooltip="Total pemasok & pabrik pupuk/pestisida"
         />
         <StatCard
           label="Database"
           icon={Database}
           value={health.data?.db.ok ? 'Baik' : health.isPending ? '…' : 'Bermasalah'}
+          badge={health.data?.db.ok ? 'Normal' : 'Periksa'}
+          badgeTone={health.data?.db.ok ? 'success' : 'error'}
+          showInfo
+          infoTooltip="Status koneksi PostgreSQL lokal"
           hint={
             health.data?.db.ok
               ? `PostgreSQL ${health.data.db.version} · ${health.data.db.latency_ms} ms`
@@ -84,39 +94,42 @@ export function HomePage() {
         />
       </section>
 
-      <section className="rounded-xl border">
-        <h2 className="border-b px-5 py-3.5 text-lg font-semibold">Status sistem</h2>
-        <div className="divide-y">
+      <section className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden">
+        <div className="border-b border-border/80 px-6 py-4">
+          <h2 className="text-base font-bold text-foreground tracking-tight">Status Sistem</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Kondisi kesehatan service desktop dan pangkalan data lokal</p>
+        </div>
+        <div className="divide-y divide-border/60">
           <StatusRow
-            icon={<Server className="size-5" />}
-            label="Server toko"
+            icon={<Server className="size-4" />}
+            label="Server Toko"
             ok={health.isSuccess}
             text={
               health.isSuccess
-                ? `Berjalan (versi ${health.data.version})`
+                ? `Berjalan normal (versi ${health.data.version})`
                 : health.isError
                   ? health.error.message
                   : 'Memeriksa…'
             }
           />
           <StatusRow
-            icon={<Database className="size-5" />}
-            label="Database"
+            icon={<Database className="size-4" />}
+            label="Database PostgreSQL"
             ok={health.data?.db.ok ?? false}
-            text={health.data?.db.ok ? `PostgreSQL ${health.data.db.version}` : (health.data?.db.error ?? 'Memeriksa…')}
+            text={health.data?.db.ok ? `PostgreSQL ${health.data.db.version} (Port 5432 / internal)` : (health.data?.db.error ?? 'Memeriksa…')}
           />
         </div>
       </section>
 
       {bridge && (
         <div className="flex flex-wrap gap-3">
-          <Button asChild variant="outline" size="lg" className="h-11 text-base">
+          <Button asChild variant="outline" size="sm" className="h-9 text-xs">
             <Link to="/uji-cetak">
-              <Printer /> Uji Cetak Printer
+              <Printer className="size-3.5" /> Uji Cetak Printer
             </Link>
           </Button>
-          <Button variant="outline" size="lg" className="h-11 text-base" onClick={() => void bridge.openLogFolder()}>
-            <FolderOpen /> Buka folder log
+          <Button variant="outline" size="sm" className="h-9 text-xs" onClick={() => void bridge.openLogFolder()}>
+            <FolderOpen className="size-3.5" /> Buka Folder Log
           </Button>
         </div>
       )}
@@ -126,15 +139,17 @@ export function HomePage() {
 
 function StatusRow({ icon, label, ok, text }: { icon: ReactNode; label: string; ok: boolean; text: string }) {
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5 text-base">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="w-36 font-medium">{label}</span>
+    <div className="flex items-center gap-3 px-6 py-3.5 text-xs sm:text-sm hover:bg-surface-muted/50 transition-colors">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-muted-foreground border border-border/50">
+        {icon}
+      </span>
+      <span className="w-40 font-semibold text-foreground">{label}</span>
       {ok ? (
-        <CheckCircle2 className="text-success-ink size-5" aria-label="baik" />
+        <CheckCircle2 className="text-emerald-700 size-4 shrink-0" aria-label="baik" />
       ) : (
-        <XCircle className="text-error-ink size-5" aria-label="bermasalah" />
+        <XCircle className="text-rose-700 size-4 shrink-0" aria-label="bermasalah" />
       )}
-      <span>{text}</span>
+      <span className="text-muted-foreground text-xs sm:text-sm">{text}</span>
     </div>
   );
 }

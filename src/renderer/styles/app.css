@@ -5,10 +5,11 @@
 
 /* Mandiri Tani brand palette — token names are the contract. */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Type scale one notch below Tailwind's default (owner, 2026-10-26: "kecilkan sedikit").
      Only text shrinks — spacing and control heights stay rem-based on 16px, so tap targets keep ≥ 44px. */
+  --text-xs: 0.75rem; /* 12px */
   --text-sm: 0.8125rem; /* 13px */
   --text-base: 0.9375rem; /* 15px */
   --text-lg: 1.0625rem; /* 17px */
@@ -22,12 +23,12 @@
   --color-tani-soil: #6d4c41;
   --color-tani-harvest: #f9a825;
   --color-tani-cream: #faf8f3;
-  --color-tani-border: #e7e7e4;
-  --color-tani-muted: #5f5f5f;
+  --color-tani-border: #e5e5e2;
+  --color-tani-muted: #666663;
 
-  /* Neutral "modern simple" surfaces (owner's reference designs, 2026-10-26). */
-  --color-canvas: #f4f4f2; /* app background behind the sidebar and the content panel */
-  --color-surface-muted: #f9f9f8; /* table header, inset rows, segmented-control track */
+  /* Neutral surfaces — clean, grounded, authentic modern backoffice. */
+  --color-canvas: #f6f6f4; /* warm, crisp off-white canvas */
+  --color-surface-muted: #f0f0ed; /* table header, inset rows, segmented-control track */
   --color-nav-active: #ffffff; /* active sidebar item (white card on the canvas) */
 
   --color-success: #2e7d32;
@@ -43,24 +44,24 @@
 
 /* shadcn/ui semantic tokens, mapped to the brand. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --background: #ffffff;
-  --foreground: #18181b;
+  --foreground: #1c1c1e;
   --card: #ffffff;
-  --card-foreground: #18181b;
+  --card-foreground: #1c1c1e;
   --popover: #ffffff;
-  --popover-foreground: #18181b;
+  --popover-foreground: #1c1c1e;
   --primary: #2e7d32;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f2;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f2;
-  --muted-foreground: #5c5c5f;
-  --accent: #f1f1ef;
-  --accent-foreground: #18181b;
+  --secondary: #f0f0ed;
+  --secondary-foreground: #1c1c1e;
+  --muted: #f6f6f4;
+  --muted-foreground: #666663;
+  --accent: #f0f0ed;
+  --accent-foreground: #1c1c1e;
   --destructive: #c62828;
-  --border: #e7e7e4;
-  --input: #dcdcd8;
+  --border: #e5e5e2;
+  --input: #d8d8d4;
   --ring: #2e7d32;
 }
 
@@ -96,8 +97,16 @@
   html {
     /* rem base for spacing and control heights; text size comes from the --text-* scale above. */
     font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   body {
     @apply bg-canvas text-foreground text-base font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    letter-spacing: -0.011em;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
   }
 }

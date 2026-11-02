@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-interface PageHeaderProps {
+export interface PageHeaderProps {
   title: string;
   description?: ReactNode;
   /** Number shown next to the title ("Pelanggan 1.238"). */
@@ -11,21 +11,32 @@ interface PageHeaderProps {
   className?: string;
 }
 
-export function PageHeader({ title, description, count, actions, className }: PageHeaderProps) {
+/** Clean, crisp Page Header */
+export function PageHeader({
+  title,
+  description,
+  count,
+  actions,
+  className,
+}: PageHeaderProps) {
   return (
-    <header className={cn('flex flex-wrap items-start justify-between gap-4', className)}>
+    <header className={cn('flex flex-wrap items-start justify-between gap-4 pb-1', className)}>
       <div>
-        <h1 className="flex items-center gap-3 text-[1.5rem] leading-tight font-semibold tracking-tight">
+        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-foreground leading-tight">
           {title}
           {count && (
-            <span className="text-muted-foreground bg-surface-muted rounded-md border px-2 py-0.5 text-base font-medium tabular-nums">
+            <span className="text-muted-foreground bg-surface-muted border border-border rounded-full px-2.5 py-0.5 text-xs font-mono font-medium tabular-nums">
               {count}
             </span>
           )}
         </h1>
-        {description && <p className="text-muted-foreground mt-1.5 text-base">{description}</p>}
+        {description && (
+          <div className="text-muted-foreground mt-1 text-xs sm:text-sm font-normal">
+            {description}
+          </div>
+        )}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
     </header>
   );
 }

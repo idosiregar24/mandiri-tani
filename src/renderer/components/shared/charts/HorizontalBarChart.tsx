@@ -1,3 +1,4 @@
+import { Info } from 'lucide-react';
 import { formatNumber, formatRupiah } from '@/lib/format';
 
 export interface RankItem {
@@ -17,6 +18,7 @@ interface HorizontalBarChartProps {
   maxItems?: number;
   barColor?: string;
   className?: string;
+  showInfo?: boolean;
 }
 
 export function HorizontalBarChart({
@@ -26,44 +28,50 @@ export function HorizontalBarChart({
   maxItems = 5,
   barColor = '#2e7d32',
   className = '',
+  showInfo = true,
 }: HorizontalBarChartProps) {
   const displayItems = items.slice(0, maxItems);
   const maxVal = Math.max(...displayItems.map((item) => item.amount), 1);
 
   if (displayItems.length === 0) {
     return (
-      <div className={`rounded-xl border bg-card p-5 ${className}`}>
-        {title && <h3 className="font-semibold text-base mb-2">{title}</h3>}
-        <p className="text-muted-foreground text-sm py-4">Belum ada data peringkat.</p>
+      <div className={`rounded-2xl border border-border bg-card p-6 shadow-xs ${className}`}>
+        {title && <h3 className="font-bold text-base text-foreground tracking-tight mb-2">{title}</h3>}
+        <p className="text-muted-foreground text-xs py-4">Belum ada data peringkat.</p>
       </div>
     );
   }
 
   return (
-    <div className={`rounded-xl border bg-card p-5 ${className}`}>
+    <div className={`rounded-2xl border border-border bg-card p-6 shadow-xs ${className}`}>
       <div className="flex items-center justify-between mb-4">
         <div>
-          {title && <h3 className="font-semibold text-base">{title}</h3>}
-          {subtitle && <p className="text-muted-foreground text-xs">{subtitle}</p>}
+          {title && (
+            <h3 className="font-bold text-base text-foreground tracking-tight flex items-center gap-1.5">
+              {title}
+              {showInfo && <Info className="size-3.5 text-muted-foreground/60" />}
+            </h3>
+          )}
+          {subtitle && <p className="text-muted-foreground text-xs mt-0.5">{subtitle}</p>}
         </div>
       </div>
 
-      <div className="space-y-3.5">
+      <div className="space-y-4">
         {displayItems.map((item, idx) => {
           const ratio = Math.max(4, Math.round((item.amount / maxVal) * 100));
           return (
             <div key={item.id} className="space-y-1.5">
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs sm:text-sm">
                 <div className="flex items-center gap-2 min-w-0 pr-2">
-                  <span className="text-muted-foreground text-xs font-mono w-4">{idx + 1}.</span>
-                  <span className="font-medium truncate">{item.name}</span>
+                  <span className="text-muted-foreground font-mono font-bold w-4 text-xs">{idx + 1}.</span>
+                  <span className="font-semibold text-foreground truncate">{item.name}</span>
                   {item.qty !== undefined && (
                     <span className="text-muted-foreground text-xs shrink-0 tabular-nums">
                       ({formatNumber(String(item.qty))} {item.unit ?? ''})
                     </span>
                   )}
                 </div>
-                <span className="font-semibold tabular-nums text-sm shrink-0">
+                <span className="font-bold text-foreground tabular-nums text-xs sm:text-sm shrink-0">
                   {formatRupiah(String(item.amount))}
                 </span>
               </div>
@@ -83,4 +91,3 @@ export function HorizontalBarChart({
     </div>
   );
 }
-

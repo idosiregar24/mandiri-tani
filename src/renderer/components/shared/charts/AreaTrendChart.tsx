@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { Info } from 'lucide-react';
 import { formatRupiah } from '@/lib/format';
 
 export interface TrendPoint {
-  label: string; // e.g. "01/10" or "Sen"
-  date?: string; // full date
-  value: number; // primary (e.g. Omzet)
-  secondary?: number; // secondary (e.g. Laba)
+  label: string;
+  date?: string;
+  value: number;
+  secondary?: number;
 }
 
 interface AreaTrendChartProps {
@@ -15,6 +16,7 @@ interface AreaTrendChartProps {
   secondaryLabel?: string;
   height?: number;
   className?: string;
+  showInfo?: boolean;
 }
 
 export function AreaTrendChart({
@@ -24,12 +26,13 @@ export function AreaTrendChart({
   secondaryLabel = 'Laba Kotor',
   height = 220,
   className = '',
+  showInfo = true,
 }: AreaTrendChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   if (!data || data.length === 0) {
     return (
-      <div className={`flex items-center justify-center text-muted-foreground p-6 rounded-xl border ${className}`}>
+      <div className={`flex items-center justify-center text-muted-foreground p-8 rounded-2xl border border-border bg-card shadow-xs ${className}`}>
         Belum ada data tren penjualan.
       </div>
     );
@@ -44,13 +47,11 @@ export function AreaTrendChart({
   const chartH = height - paddingTop - paddingBottom;
 
   const maxVal = Math.max(...data.map((d) => Math.max(d.value, d.secondary ?? 0)), 1000);
-  // Round up to nice number
   const yMax = Math.ceil(maxVal * 1.15);
 
   const getX = (i: number) => paddingLeft + (i / Math.max(1, data.length - 1)) * chartW;
   const getY = (val: number) => paddingTop + chartH - (val / yMax) * chartH;
 
-  // Build SVG path
   const primaryPoints = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
   const areaPoints = `${getX(0)},${paddingTop + chartH} ${primaryPoints} ${getX(data.length - 1)},${paddingTop + chartH}`;
 
@@ -62,18 +63,23 @@ export function AreaTrendChart({
   const activePoint = hoverIndex !== null ? data[hoverIndex] : null;
 
   return (
-    <div className={`rounded-xl border bg-card p-5 ${className}`}>
+    <div className={`rounded-2xl border border-border bg-card p-6 shadow-xs ${className}`}>
       <div className="flex items-center justify-between mb-4">
-        {title && <h3 className="font-semibold text-base">{title}</h3>}
+        {title && (
+          <h3 className="font-bold text-base text-foreground tracking-tight flex items-center gap-1.5">
+            {title}
+            {showInfo && <Info className="size-3.5 text-muted-foreground/60" />}
+          </h3>
+        )}
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full bg-[#2e7d32]" />
-            <span className="text-muted-foreground">{primaryLabel}</span>
+            <span className="size-2 rounded-xs bg-[#2e7d32]" />
+            <span className="text-muted-foreground font-medium">{primaryLabel}</span>
           </div>
           {hasSecondary && (
             <div className="flex items-center gap-1.5">
-              <span className="size-2.5 rounded-full bg-[#f9a825]" />
-              <span className="text-muted-foreground">{secondaryLabel}</span>
+              <span className="size-2 rounded-xs bg-[#f9a825]" />
+              <span className="text-muted-foreground font-medium">{secondaryLabel}</span>
             </div>
           )}
         </div>
@@ -87,7 +93,7 @@ export function AreaTrendChart({
         >
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2e7d32" stopOpacity="0.25" />
+              <stop offset="0%" stopColor="#2e7d32" stopOpacity="0.18" />
               <stop offset="100%" stopColor="#2e7d32" stopOpacity="0.0" />
             </linearGradient>
           </defs>
@@ -103,15 +109,15 @@ export function AreaTrendChart({
                   y1={y}
                   x2={svgWidth - paddingRight}
                   y2={y}
-                  stroke="currentColor"
-                  strokeOpacity="0.08"
+                  stroke="#e5e5e2"
+                  strokeWidth="1"
                   strokeDasharray="3 3"
                 />
                 <text
                   x={paddingLeft - 8}
                   y={y + 3}
                   textAnchor="end"
-                  className="fill-muted-foreground text-[10px] tabular-nums"
+                  className="fill-muted-foreground text-[10px] tabular-nums font-mono"
                 >
                   {val >= 1000000 ? `${(val / 1000000).toFixed(1)}jt` : `${(val / 1000).toFixed(0)}rb`}
                 </text>
@@ -145,9 +151,8 @@ export function AreaTrendChart({
             />
           )}
 
-          {/* X axis labels (sparse) */}
+          {/* X axis labels */}
           {data.map((d, i) => {
-            // Show every ~5th point or first/last
             const step = Math.max(1, Math.floor(data.length / 6));
             if (i % step !== 0 && i !== data.length - 1) return null;
             return (
@@ -156,7 +161,7 @@ export function AreaTrendChart({
                 x={getX(i)}
                 y={paddingTop + chartH + 18}
                 textAnchor="middle"
-                className="fill-muted-foreground text-[11px]"
+                className="fill-muted-foreground text-[11px] font-medium"
               >
                 {d.label}
               </text>
@@ -214,22 +219,22 @@ export function AreaTrendChart({
         {/* Floating tooltip */}
         {hoverIndex !== null && activePoint && (
           <div
-            className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full rounded-lg border bg-popover px-3 py-2 text-xs shadow-md"
+            className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full rounded-xl border border-border bg-card px-3.5 py-2 text-xs shadow-md"
             style={{
               left: `${(getX(hoverIndex) / svgWidth) * 100}%`,
             }}
           >
-            <p className="font-semibold text-foreground mb-1">{activePoint.date ?? activePoint.label}</p>
+            <p className="font-bold text-foreground mb-1">{activePoint.date ?? activePoint.label}</p>
             <div className="flex items-center gap-2 text-xs">
-              <span className="size-2 rounded-full bg-[#2e7d32]" />
+              <span className="size-2 rounded-xs bg-[#2e7d32]" />
               <span className="text-muted-foreground">{primaryLabel}:</span>
-              <span className="font-medium tabular-nums">{formatRupiah(String(activePoint.value))}</span>
+              <span className="font-semibold text-foreground tabular-nums">{formatRupiah(String(activePoint.value))}</span>
             </div>
             {activePoint.secondary !== undefined && (
               <div className="flex items-center gap-2 text-xs mt-0.5">
-                <span className="size-2 rounded-full bg-[#f9a825]" />
+                <span className="size-2 rounded-xs bg-[#f9a825]" />
                 <span className="text-muted-foreground">{secondaryLabel}:</span>
-                <span className="font-medium tabular-nums">{formatRupiah(String(activePoint.secondary))}</span>
+                <span className="font-semibold text-foreground tabular-nums">{formatRupiah(String(activePoint.secondary))}</span>
               </div>
             )}
           </div>
@@ -238,4 +243,3 @@ export function AreaTrendChart({
     </div>
   );
 }
-
