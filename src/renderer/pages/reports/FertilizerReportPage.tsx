@@ -6,6 +6,7 @@ import { Sprout } from 'lucide-react';
 import { useMemo } from 'react';
 import { dec } from '@shared/money';
 import type { DailyFertilizerReport, FertilizerCell, FertilizerProduct } from '@shared/schemas/reports';
+import { DonutChart, HorizontalBarChart } from '@/components/shared/charts';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Notice } from '@/components/shared/Notice';
@@ -13,7 +14,7 @@ import { useReport } from '@/features/reports/api';
 import { ReportSection } from '@/features/reports/parts';
 import { useReportPeriod } from '@/features/reports/period';
 import { ReportLayout } from '@/features/reports/ReportLayout';
-import { formatDate, formatQty, formatStockQty } from '@/lib/format';
+import { formatDate, formatNumber, formatQty, formatStockQty } from '@/lib/format';
 
 const right = { align: 'right' as const, className: 'whitespace-nowrap' };
 const qty = (v: string, unit: string) => (dec(v).isZero() ? '—' : formatQty(v, unit));
@@ -66,6 +67,41 @@ export function FertilizerReportPage() {
     }));
   }, [d]);
 
+  // Donut chart segments for closing stock distribution
+  const stockSegments = useMemo(() => {
+    if (!d?.products) return [];
+    return d.products
+      .filter((p) => dec(p.closing).gt(0))
+      .map((p) => ({
+        id: p.id,
+        label: p.name,
+        value: Math.max(0, Math.round(Number(p.closing))),
+        desc: `Sisa: ${stock(p.closing, p)}`,
+        formattedValue: stock(p.closing, p),
+      }));
+  }, [d?.products]);
+
+  // Ranked outgoing sales
+  const outgoingRank = useMemo(() => {
+    if (!d?.products) return [];
+    return d.products
+      .filter((p) => dec(p.totals.outBig).gt(0) || dec(p.totals.outBase).gt(0))
+      .map((p) => {
+        const big = Number(p.totals.outBig || '0');
+        const conversion = Number(p.bigUnit?.conversion || '1');
+        const base = Number(p.totals.outBase || '0');
+        const totalKg = big * conversion + base;
+        return {
+          id: p.id,
+          name: p.name,
+          amount: totalKg,
+          qty: big > 0 ? big : base,
+          unit: big > 0 ? (p.bigUnit?.code ?? 'zak') : p.baseUnit,
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+  }, [d?.products]);
+
   return (
     <ReportLayout
       title={`Rekap Harian ${d?.category?.name ?? 'Pupuk'}`}
@@ -80,6 +116,39 @@ export function FertilizerReportPage() {
       {d && !d.category && (
         <Notice tone="warning">Belum ada kategori berawalan "PUPUK". Atur kategori barang di menu Data Lain.</Notice>
       )}
+
+      {/* Visual Analytics: Pie / Donut Chart for Fertilizer Stock & Movement */}
+      {d && d.products.length > 0 && stockSegments.length > 0 && !report.isFetching && (
+        <div className="space-y-3.5 print:hidden">
+          <div className="pt-2">
+            <h3 className="text-base font-bold text-foreground tracking-tight">
+              Distribusi Stok & Pengeluaran Pupuk
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Proporsi sisa stok fisik gudang dan pergerakan keluar per produk pupuk
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <DonutChart
+              title="Komposisi Sisa Stok Pupuk"
+              subtitle="Proporsi sisa stok fisik yang tersedia di gudang toko"
+              segments={stockSegments}
+              centerLabel="Varian Pupuk"
+              centerValue={`${stockSegments.length} Jenis`}
+              formatValue={(v) => `${formatNumber(String(v))} kg`}
+            />
+
+            <HorizontalBarChart
+              title="Peringkat Pengeluaran Pupuk Terbanyak"
+              subtitle="Total pengeluaran (dihitung dalam ekuivalen berat kg)"
+              maxItems={6}
+              items={outgoingRank}
+            />
+          </div>
+        </div>
+      )}
+
       <DataTable
         columns={summaryColumns}
         data={d?.products ?? []}
@@ -87,9 +156,10 @@ export function FertilizerReportPage() {
         isLoading={report.isFetching}
         empty={<EmptyState icon={Sprout} title="Tidak ada barang di kategori ini" />}
       />
+
       {d && d.products.length > 0 && (
         <ReportSection title="Per hari">
-          <div className="overflow-x-auto rounded-xl border print:overflow-visible">
+          <div className="overflow-x-auto rounded-xl border border-border print:overflow-visible">
             <table className="w-full text-sm tabular-nums">
               <thead className="bg-surface-muted text-muted-foreground">
                 <tr>
@@ -101,7 +171,7 @@ export function FertilizerReportPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/60">
                 {matrix.map((row) => (
                   <tr key={row.date}>
                     <td className="sticky left-0 bg-background px-3 py-2 whitespace-nowrap">{formatDate(row.date)}</td>
@@ -112,7 +182,7 @@ export function FertilizerReportPage() {
                         )}
                         {cell && !dec(cell.outBase).isZero() && <p>{formatQty(cell.outBase, p.baseUnit)}</p>}
                         {cell && !dec(cell.in).isZero() && (
-                          <p className="text-success-ink">+{formatQty(cell.in, p.baseUnit)}</p>
+                          <p className="text-emerald-700">+{formatQty(cell.in, p.baseUnit)}</p>
                         )}
                         <p className="text-muted-foreground text-xs">sisa {stock(balance, p)}</p>
                       </td>
@@ -122,7 +192,7 @@ export function FertilizerReportPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs mt-2">
             Sisa = stok fisik di gudang; barang terjual yang belum diambil pelanggan masih dihitung di gudang.
           </p>
         </ReportSection>

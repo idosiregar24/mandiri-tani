@@ -8,22 +8,38 @@ export interface DonutSegment {
   value: number;
   color?: string;
   desc?: string;
+  formattedValue?: string;
 }
 
 interface DonutChartProps {
   title?: string;
+  subtitle?: string;
   segments: DonutSegment[];
   centerLabel?: string;
+  centerValue?: string;
+  formatValue?: (val: number) => string;
   className?: string;
   showInfo?: boolean;
 }
 
-const DEFAULT_COLORS = ['#2e7d32', '#1565c0', '#f9a825', '#6d4c41', '#7b1fa2', '#00838f'];
+const DEFAULT_COLORS = [
+  '#2e7d32', // tani-green
+  '#1565c0', // blue
+  '#f9a825', // harvest amber
+  '#6d4c41', // soil
+  '#7b1fa2', // purple
+  '#00838f', // cyan
+  '#e65100', // deep orange
+  '#455a64', // slate blue
+];
 
 export function DonutChart({
   title,
+  subtitle,
   segments,
   centerLabel = 'Total',
+  centerValue,
+  formatValue = (v) => formatRupiah(String(v)),
   className = '',
   showInfo = true,
 }: DonutChartProps) {
@@ -62,10 +78,13 @@ export function DonutChart({
   return (
     <div className={`rounded-2xl border border-border bg-card p-6 shadow-xs ${className}`}>
       {title && (
-        <h3 className="font-bold text-base text-foreground tracking-tight mb-4 flex items-center gap-1.5">
-          {title}
-          {showInfo && <Info className="size-3.5 text-muted-foreground/60" />}
-        </h3>
+        <div className="mb-4">
+          <h3 className="font-bold text-base text-foreground tracking-tight flex items-center gap-1.5">
+            {title}
+            {showInfo && <Info className="size-3.5 text-muted-foreground/60" />}
+          </h3>
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        </div>
       )}
 
       <div className="grid gap-6 sm:grid-cols-[180px_1fr] items-center">
@@ -103,37 +122,44 @@ export function DonutChart({
 
           {/* Center text */}
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
+            <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider px-2 truncate max-w-[120px]">
               {activeSegment ? activeSegment.label : centerLabel}
             </span>
-            <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
+            <span className="text-lg font-bold tracking-tight text-foreground tabular-nums">
               {activeSegment
                 ? `${activeSegment.percentage}%`
-                : total >= 1000000
-                  ? `${(total / 1000000).toFixed(1)}jt`
-                  : formatRupiah(String(total))}
+                : centerValue !== undefined
+                  ? centerValue
+                  : total >= 1000000
+                    ? `${(total / 1000000).toFixed(1)}jt`
+                    : formatValue(total)}
             </span>
           </div>
         </div>
 
         {/* Legend */}
-        <div className="space-y-2.5">
+        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
           {coloredSegments.map((s) => (
             <div
               key={s.id}
               className={`flex items-center justify-between text-xs p-2 rounded-xl transition-all cursor-pointer ${
-                hoveredId === s.id ? 'bg-surface-muted font-medium' : ''
+                hoveredId === s.id ? 'bg-surface-muted font-medium' : 'hover:bg-surface-muted/50'
               }`}
               onMouseEnter={() => setHoveredId(s.id)}
               onMouseLeave={() => setHoveredId(null)}
             >
               <div className="flex items-center gap-2.5 min-w-0 pr-2">
                 <span className="size-2.5 rounded-xs shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="truncate font-semibold text-foreground">{s.label}</span>
+                <div className="truncate">
+                  <span className="font-semibold text-foreground truncate block">{s.label}</span>
+                  {s.desc && <span className="text-[11px] text-muted-foreground truncate block">{s.desc}</span>}
+                </div>
               </div>
-              <div className="flex items-center gap-2.5 shrink-0">
+              <div className="flex items-center gap-2.5 shrink-0 text-right">
                 <span className="text-muted-foreground tabular-nums font-medium">{s.percentage}%</span>
-                <span className="font-bold tabular-nums text-foreground">{formatRupiah(String(s.value))}</span>
+                <span className="font-bold tabular-nums text-foreground">
+                  {s.formattedValue ?? formatValue(s.value)}
+                </span>
               </div>
             </div>
           ))}
