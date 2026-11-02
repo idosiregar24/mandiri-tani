@@ -48,7 +48,14 @@ export function PickupScreen() {
   const location = useLocation();
   const qc = useQueryClient();
   const settings = useReceiptSettings();
-  const store = settings.data?.store ?? { name: 'Toko', address: null, phone: null };
+  const store = settings.data?.store ?? {
+    name: 'Toko',
+    address: null,
+    phone: null,
+    fax: null,
+    email: null,
+    receiptFooter: null,
+  };
   const initialCustomer = (location.state as { customerId?: string } | null)?.customerId ?? null;
   const [customer, setCustomer] = useState<CartCustomer | null>(null);
   const [customerId, setCustomerId] = useState<string | null>(initialCustomer);

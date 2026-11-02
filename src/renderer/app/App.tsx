@@ -22,6 +22,9 @@ import { OpnamePage } from '@/pages/stock/OpnamePage';
 import { StockCardPage } from '@/pages/stock/StockCardPage';
 import { StockList } from '@/pages/stock/StockList';
 import { SupplierList } from '@/pages/suppliers/SupplierList';
+import { StoreSettingsPage } from '@/pages/settings/StoreSettingsPage';
+import { UsersPage } from '@/pages/users/UsersPage';
+import { AuditLogsPage } from '@/pages/audit/AuditLogsPage';
 import { useSessionStore } from '@/lib/session';
 import { AppShell } from './AppShell';
 import { AuthGate } from './AuthGate';
@@ -89,6 +92,9 @@ const router = createBrowserRouter([
       { path: '/impor-ipos', element: <IposImportPage /> },
       { path: '/koneksi', element: <ConnectionPage /> },
       { path: '/uji-cetak', element: <PrintTestPage /> },
+      { path: '/pengaturan', element: <StoreSettingsPage /> },
+      { path: '/pengguna', element: <UsersPage /> },
+      { path: '/catatan-aktivitas', element: <AuditLogsPage /> },
       { path: '*', element: <HomePage /> },
     ],
   },

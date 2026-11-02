@@ -5,6 +5,7 @@ import { AlarmClock, CalendarRange, PackageCheck, PackageMinus, ShoppingBag, Tre
 import { Link } from 'react-router';
 import { dec } from '@shared/money';
 import type { DashboardFigure } from '@shared/schemas/reports';
+import { AreaTrendChart, DonutChart, HorizontalBarChart } from '@/components/shared/charts';
 import { Notice } from '@/components/shared/Notice';
 import { StatCard } from '@/components/shared/StatCard';
 import { formatNumber, formatQty, formatRupiah } from '@/lib/format';
@@ -87,24 +88,70 @@ export function Dashboard() {
         />
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border">
-          <h2 className="border-b px-5 py-3.5 text-lg font-semibold">10 barang terlaris · 30 hari</h2>
-          {d.topProducts && d.topProducts.length > 0 ? (
-            <ol className="divide-y">
-              {d.topProducts.map((p, i) => (
-                <li key={p.productId} className="flex items-center gap-3 px-5 py-2.5 text-base">
-                  <span className="text-muted-foreground w-6 tabular-nums">{i + 1}.</span>
-                  <span className="flex-1 font-medium">{p.name}</span>
-                  <span className="text-muted-foreground tabular-nums">{formatQty(p.qty, p.baseUnit)}</span>
-                  <span className="w-40 text-right font-semibold tabular-nums">{formatRupiah(p.sales)}</span>
-                </li>
-              ))}
-            </ol>
+      {/* Visual Analytics Charts */}
+      {d.dailyTrend && d.dailyTrend.length > 0 && (
+        <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+          <AreaTrendChart
+            title="Tren Penjualan 14 Hari Terakhir"
+            primaryLabel="Penjualan"
+            data={d.dailyTrend.map((t) => ({
+              label: t.label,
+              date: t.date,
+              value: Number(t.sales),
+            }))}
+          />
+          {d.paymentBreakdown && d.paymentBreakdown.length > 0 ? (
+            <DonutChart
+              title="Komposisi Pembayaran Bulan Ini"
+              centerLabel="Total Bayar"
+              segments={d.paymentBreakdown.map((p) => ({
+                id: p.id,
+                label: p.name,
+                value: Number(p.amount),
+              }))}
+            />
           ) : (
-            <p className="text-muted-foreground px-5 py-6">Belum ada penjualan 30 hari terakhir.</p>
+            <div className="rounded-xl border bg-card p-5 flex items-center justify-center text-muted-foreground text-sm">
+              Belum ada data pembayaran bulan ini.
+            </div>
           )}
-        </section>
+        </div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+        <div className="space-y-4">
+          {d.topProducts && d.topProducts.length > 0 && (
+            <HorizontalBarChart
+              title="Kontribusi 5 Produk Terlaris · 30 Hari"
+              subtitle="Berdasarkan nilai rupiah omzet penjualan"
+              items={d.topProducts.map((p) => ({
+                id: p.productId,
+                name: p.name,
+                amount: Number(p.sales),
+                qty: p.qty,
+                unit: p.baseUnit,
+              }))}
+            />
+          )}
+
+          <section className="rounded-xl border">
+            <h2 className="border-b px-5 py-3.5 text-lg font-semibold">10 barang terlaris · 30 hari</h2>
+            {d.topProducts && d.topProducts.length > 0 ? (
+              <ol className="divide-y">
+                {d.topProducts.map((p, i) => (
+                  <li key={p.productId} className="flex items-center gap-3 px-5 py-2.5 text-base">
+                    <span className="text-muted-foreground w-6 tabular-nums">{i + 1}.</span>
+                    <span className="flex-1 font-medium">{p.name}</span>
+                    <span className="text-muted-foreground tabular-nums">{formatQty(p.qty, p.baseUnit)}</span>
+                    <span className="w-40 text-right font-semibold tabular-nums">{formatRupiah(p.sales)}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-muted-foreground px-5 py-6">Belum ada penjualan 30 hari terakhir.</p>
+            )}
+          </section>
+        </div>
 
         <section className="space-y-3">
           <AttentionRow

@@ -1,5 +1,6 @@
 // Arus Kas (FR-FIN-03, S10-8): per account opening balance, in & out per category, closing balance.
 import type { CashflowAccount, CashflowReport } from '@shared/schemas/reports';
+import { BarChart } from '@/components/shared/charts';
 import { Notice } from '@/components/shared/Notice';
 import { useReport } from '@/features/reports/api';
 import { Totals } from '@/features/reports/parts';
@@ -65,6 +66,23 @@ export function CashflowReportPage() {
       )}
       {d && (
         <>
+          {d.accounts.length > 0 && !report.isFetching && (
+            <div className="print:hidden">
+              <BarChart
+                title="Perbandingan Uang Masuk vs Uang Keluar per Akun Kas"
+                primaryLabel="Uang Masuk"
+                secondaryLabel="Uang Keluar"
+                primaryColor="#2e7d32"
+                secondaryColor="#c62828"
+                stacked={false}
+                data={d.accounts.map((a) => ({
+                  label: a.name,
+                  value: a.in.reduce((sum, item) => sum + Number(item.amount), 0),
+                  secondary: a.out.reduce((sum, item) => sum + Number(item.amount), 0),
+                }))}
+              />
+            </div>
+          )}
           <Totals
             items={[
               { label: 'Saldo awal semua akun', value: formatRupiah(d.totals.opening) },

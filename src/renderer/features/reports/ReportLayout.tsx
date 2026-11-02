@@ -13,7 +13,7 @@ import { todayJakarta } from '@/features/pos/api';
 import { desktopBridge } from '@/lib/desktop';
 import { formatDateTime } from '@/lib/format';
 import { downloadReportXlsx, type ReportParams } from './api';
-import { matchQuick, periodSlug, periodText, QUICK_PERIODS, quickPeriod, type QuickPeriod } from './period';
+import { matchQuick, periodSlug, QUICK_PERIODS, quickPeriod, type QuickPeriod } from './period';
 
 interface ReportLayoutProps {
   title: string;
@@ -77,13 +77,21 @@ export function ReportLayout({
       {/* The paper orientation of window.print() / printToPDF follows this page. */}
       <style>{`@page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }`}</style>
 
-      <div className="hidden print:block">
-        <p className="text-sm">Mandiri Tani</p>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="text-sm">
-          {period ? periodText(period.value) : `Per ${periodText({ from: todayJakarta(), to: todayJakarta() })}`} ·
-          dicetak {formatDateTime(new Date())}
-        </p>
+      <div className="hidden print:block border-b pb-4 mb-4 text-xs font-mono">
+        <div className="flex justify-between items-start">
+          <div className="space-y-0.5">
+            <p className="font-bold text-sm tracking-wider">MANDIRI TANI</p>
+            <p>JL. POROS RAPP km. 72</p>
+            <p>0813-6144-1706</p>
+            <p>-</p>
+          </div>
+          <div className="text-right">
+            <p className="font-bold">{period ? `PERIODE : ${period.value.from.split('-').reverse().join('/')} - ${period.value.to.split('-').reverse().join('/')}` : `PERIODE : ${todayJakarta().split('-').reverse().join('/')}`}</p>
+          </div>
+        </div>
+        <div className="mt-3 text-center">
+          <h1 className="text-base font-bold tracking-wide uppercase">{title}</h1>
+        </div>
       </div>
 
       <PageHeader
@@ -119,6 +127,11 @@ export function ReportLayout({
         </Notice>
       )}
       {children}
+      <div className="hidden print:flex justify-between items-center text-[10px] font-mono text-muted-foreground pt-4 border-t mt-6">
+        <span>{formatDateTime(new Date())}</span>
+        <span>ADMIN</span>
+        <span>HALAMAN 1</span>
+      </div>
     </div>
   );
 }

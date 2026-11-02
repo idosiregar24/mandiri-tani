@@ -86,5 +86,18 @@ export function masterRoutes({ pool }: { pool: Pool }): Router {
     res.status(204).end();
   });
 
+  router.get('/masters/export-xlsx', requirePermission('products.read'), async (_req, res, next) => {
+    try {
+      const { exportMasterDataXlsx } = await import('./export');
+      const buf = await exportMasterDataXlsx(pool);
+      res
+        .set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .set('Content-Disposition', 'attachment; filename="master-data-mandiri-tani.xlsx"')
+        .send(buf);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   return router;
 }

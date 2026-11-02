@@ -20,7 +20,12 @@ export interface AuditActor {
   ip?: string | null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function recordAudit(tx: Queryable, actor: AuditActor, entry: AuditEntry): Promise<void> {
+  const isUuid = entry.entityId && UUID_RE.test(entry.entityId);
+  const entityUuid = isUuid ? entry.entityId : null;
+
   await tx.query(
     `INSERT INTO audit_logs (actor_id, approved_by, device_id, action, entity, entity_id, before, after, ip, request_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -30,7 +35,7 @@ export async function recordAudit(tx: Queryable, actor: AuditActor, entry: Audit
       actor.deviceId,
       entry.action,
       entry.entity ?? null,
-      entry.entityId ?? null,
+      entityUuid,
       entry.before === undefined ? null : JSON.stringify(entry.before),
       entry.after === undefined ? null : JSON.stringify(entry.after),
       actor.ip ?? null,

@@ -4,6 +4,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { ReceiptText } from 'lucide-react';
 import { useState } from 'react';
 import type { SalesGroup, SalesGroupRow, SalesRecapRow, SalesReport } from '@shared/schemas/reports';
+import { BarChart, DonutChart, HorizontalBarChart } from '@/components/shared/charts';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Notice } from '@/components/shared/Notice';
@@ -54,7 +55,16 @@ const invoiceColumns: ColumnDef<SalesRecapRow, unknown>[] = [
     ),
     meta: { className: 'min-w-44' },
   },
-  // Jml Item and Sub Total are in the Excel file (all iPOS columns); left out on screen to fit 1366 px.
+  {
+    header: 'Jml Item',
+    cell: ({ row }) => formatNumber(row.original.itemCount),
+    meta: right,
+  },
+  {
+    header: 'Sub Total',
+    cell: ({ row }) => money(row.original.subtotal),
+    meta: right,
+  },
   { header: 'Pot.', cell: ({ row }) => money(row.original.discount), meta: right },
   { header: 'Biaya Lain', cell: ({ row }) => money(row.original.otherCharges), meta: right },
   {
@@ -118,6 +128,63 @@ export function SalesReportPage() {
       landscape={groupBy === 'invoice'}
     >
       {report.isError && <Notice tone="error">{report.error.message}</Notice>}
+
+      {/* Visual Analytics */}
+      {d?.groups && d.groups.length > 0 && !report.isFetching && (
+        <div className="print:hidden">
+          {groupBy === 'day' && (
+            <BarChart
+              title="Grafik Penjualan Harian (Tunai vs Kredit)"
+              primaryLabel="Tunai"
+              secondaryLabel="Kredit"
+              data={d.groups.map((g) => ({
+                label: g.label.length >= 10 ? `${g.label.slice(8, 10)}/${g.label.slice(5, 7)}` : g.label,
+                date: g.label,
+                value: Number(g.paidCash ?? g.amount),
+                secondary: Number(g.paidCredit ?? 0),
+                count: g.count,
+              }))}
+            />
+          )}
+          {groupBy === 'category' && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <HorizontalBarChart
+                title="Peringkat Omzet per Kategori"
+                subtitle="Kontribusi omzet per kategori barang"
+                maxItems={8}
+                items={d.groups.map((g) => ({
+                  id: g.key,
+                  name: g.label,
+                  amount: Number(g.amount),
+                  qty: g.count,
+                  unit: 'nota',
+                }))}
+              />
+              <DonutChart
+                title="Proporsi Penjualan per Kategori"
+                segments={d.groups.map((g) => ({
+                  id: g.key,
+                  label: g.label,
+                  value: Number(g.amount),
+                }))}
+              />
+            </div>
+          )}
+          {groupBy === 'payment_method' && (
+            <div className="max-w-xl">
+              <DonutChart
+                title="Distribusi Cara Pembayaran"
+                segments={d.groups.map((g) => ({
+                  id: g.key,
+                  label: g.label,
+                  value: Number(g.amount),
+                }))}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {groupBy === 'invoice' ? (
         <>
           <DataTable

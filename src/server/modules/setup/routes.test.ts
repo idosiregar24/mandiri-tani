@@ -48,7 +48,14 @@ describe('first-run setup (FR-SYS-01)', () => {
     expect((await api.call('GET', '/units', undefined, { token })).status).toBe(200);
 
     const store = await api.pool.query(`SELECT value FROM settings WHERE key = 'store'`);
-    expect(store.rows[0].value).toEqual({ name: 'Toko Tani Contoh', address: 'Jl. Contoh No. 1', phone: null });
+    expect(store.rows[0].value).toEqual({
+      name: 'Toko Tani Contoh',
+      address: 'Jl. Contoh No. 1',
+      phone: null,
+      fax: null,
+      email: null,
+      receiptFooter: null,
+    });
     const wh = await api.pool.query(`SELECT code, name FROM warehouses WHERE is_default`);
     expect(wh.rows[0]).toEqual({ code: 'UTM', name: 'Gudang Depan' });
     const audit = await api.pool.query(`SELECT action FROM audit_logs ORDER BY seq`);

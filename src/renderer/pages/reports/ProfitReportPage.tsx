@@ -12,6 +12,7 @@ import type {
   ProfitLossReport,
   ProfitTotals,
 } from '@shared/schemas/reports';
+import { HorizontalBarChart } from '@/components/shared/charts';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Notice } from '@/components/shared/Notice';
@@ -179,6 +180,24 @@ export function ProfitReportPage() {
 
       {view === 'item' && (
         <>
+          {item.data?.rows && item.data.rows.length > 0 && !item.isFetching && (
+            <div className="print:hidden mb-4">
+              <HorizontalBarChart
+                title="5 Barang dengan Laba Kotor Tertinggi"
+                subtitle="Diurutkan berdasarkan nominal laba kotor tertinggi"
+                maxItems={5}
+                items={item.data.rows
+                  .filter((r) => r.profit !== null && Number(r.profit) > 0)
+                  .map((r) => ({
+                    id: r.productId,
+                    name: r.name,
+                    amount: Number(r.profit),
+                    qty: r.qty,
+                    unit: r.baseUnit,
+                  }))}
+              />
+            </div>
+          )}
           <DataTable
             columns={itemColumns}
             data={item.data?.rows ?? []}
@@ -231,22 +250,42 @@ function Line({ label, value, strong, minus }: { label: string; value: string; s
 }
 
 function ProfitLoss({ r }: { r: ProfitLossReport }) {
+  const chartItems = [
+    { id: '1', name: 'Penjualan Bersih', amount: Math.max(0, Number(r.netSales)) },
+    { id: '2', name: 'Harga Pokok Penjualan (HPP)', amount: Math.max(0, Number(r.hpp)) },
+    { id: '3', name: 'Laba Kotor', amount: Math.max(0, Number(r.grossProfit)) },
+    { id: '4', name: 'Biaya Operasional', amount: Math.max(0, Number(r.opexTotal)) },
+    { id: '5', name: 'Laba Bersih', amount: Math.max(0, Number(r.operatingProfit)) },
+  ];
+
   return (
     <div className="space-y-5">
-      <div className="max-w-2xl divide-y rounded-xl border text-base">
-        <Line label="Penjualan bersih" value={r.netSales} />
-        {r.unknownCostSales !== '0.00' && (
-          <Line label="Dikurangi: penjualan tanpa HPP (histori iPOS)" value={r.unknownCostSales} minus />
-        )}
-        <Line label="Retur penjualan" value={r.returns} minus />
-        <Line label={`Harga pokok penjualan (HPP)${r.estimated ? ' *' : ''}`} value={r.hpp} minus />
-        <Line label="Laba kotor" value={r.grossProfit} strong />
-        <Line label="Pendapatan ongkos angkut" value={r.otherCharges} />
-        {r.opex.map((o) => (
-          <Line key={o.code} label={`Biaya: ${o.name}`} value={o.amount} minus />
-        ))}
-        <Line label="Total biaya operasional" value={r.opexTotal} minus />
-        <Line label="Laba bersih operasional (perkiraan)" value={r.operatingProfit} strong />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="divide-y rounded-xl border text-base">
+          <Line label="Penjualan bersih" value={r.netSales} />
+          {r.unknownCostSales !== '0.00' && (
+            <Line label="Dikurangi: penjualan tanpa HPP (histori iPOS)" value={r.unknownCostSales} minus />
+          )}
+          <Line label="Retur penjualan" value={r.returns} minus />
+          <Line label={`Harga pokok penjualan (HPP)${r.estimated ? ' *' : ''}`} value={r.hpp} minus />
+          <Line label="Laba kotor" value={r.grossProfit} strong />
+          <Line label="Pendapatan ongkos angkut" value={r.otherCharges} />
+          {r.opex.map((o) => (
+            <Line key={o.code} label={`Biaya: ${o.name}`} value={o.amount} minus />
+          ))}
+          <Line label="Total biaya operasional" value={r.opexTotal} minus />
+          <Line label="Laba bersih operasional (perkiraan)" value={r.operatingProfit} strong />
+        </div>
+
+        <div className="print:hidden">
+          <HorizontalBarChart
+            title="Ringkasan Finansial Periode Ini"
+            subtitle="Perbandingan omzet, HPP, beban dan laba"
+            items={chartItems}
+            maxItems={5}
+            barColor="#2e7d32"
+          />
+        </div>
       </div>
       <ReportSection title="Catatan">
         <Footnotes estimated={r.estimated} unknown="0.00" />

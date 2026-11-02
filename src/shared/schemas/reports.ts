@@ -392,4 +392,6 @@ export interface DashboardReport {
   lowStock?: number;
   receivables?: { overdueCount: number; overdueAmount: string; dueSoonCount: number };
   undelivered?: { customers: number; value: string; overduePromises: number; olderThan30: number };
+  dailyTrend?: { date: string; label: string; sales: string; count: number }[];
+  paymentBreakdown?: { id: string; name: string; amount: string }[];
 }

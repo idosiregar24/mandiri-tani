@@ -9,6 +9,7 @@ import { authenticate, requireLocalAccess } from './middleware/auth';
 import { errorHandler, notFound } from './middleware/error-handler';
 import { requestContext } from './middleware/request-id';
 import { arApRoutes } from './modules/ar-ap/routes';
+import { auditLogsRoutes } from './modules/audit-logs/routes';
 import { authHubRoutes, authSessionRoutes } from './modules/auth/routes';
 import { cashRoutes } from './modules/cash/routes';
 import { customerRoutes } from './modules/customers/routes';
@@ -29,6 +30,7 @@ import { setupRoutes } from './modules/setup/routes';
 import { stockRoutes } from './modules/stock/routes';
 import { supplierRoutes } from './modules/suppliers/routes';
 import { syncRoutes } from './modules/sync/routes';
+import { usersRoutes } from './modules/users/routes';
 
 export interface AppDeps {
   pool: Pool;
@@ -102,6 +104,8 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   api.use(cashRoutes({ pool }));
   api.use(reportRoutes({ pool }));
   api.use(settingsRoutes({ pool }));
+  api.use(usersRoutes({ pool }));
+  api.use(auditLogsRoutes({ pool }));
   api.use(deviceProtectedRoutes({ pool }));
   api.use(syncRoutes({ pool }));
   if (iposDb) api.use(importRoutes({ pool, iposDb, hooks }));

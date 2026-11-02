@@ -77,7 +77,32 @@ export async function dashboard(pool: Pool, ctx: RequestCtx): Promise<DashboardR
       [day],
     );
     const wh = await defaultWarehouse(db);
-    return { topProducts: top.rows, receivables: rec.rows[0]!, lowStock: (await stockSummary(db, wh.id)).low };
+    const trend = await db.query<{ date: string; label: string; sales: string; count: number }>(
+      `SELECT to_char(s.trx_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS date,
+              to_char(s.trx_at AT TIME ZONE 'Asia/Jakarta', 'DD/MM') AS label,
+              coalesce(sum(s.total), 0)::text AS sales,
+              count(*)::int AS count
+       FROM sales s
+       WHERE ${COUNTED_SALE} AND ${inPeriod('s.trx_at', '$1', '$2')}
+       GROUP BY 1, 2 ORDER BY 1`,
+      [shift(day, -13), day],
+    );
+    const payments = await db.query<{ id: string; name: string; amount: string }>(
+      `SELECT m.id, m.name, coalesce(sum(p.amount), 0)::text AS amount
+       FROM sale_payments p
+       JOIN payment_methods m ON m.id = p.payment_method_id
+       JOIN sales s ON s.id = p.sale_id
+       WHERE ${COUNTED_SALE} AND ${inPeriod('s.trx_at', '$1', '$2')}
+       GROUP BY m.id, m.name ORDER BY sum(p.amount) DESC`,
+      [periods.month[0], periods.month[1]],
+    );
+    return {
+      topProducts: top.rows,
+      receivables: rec.rows[0]!,
+      lowStock: (await stockSummary(db, wh.id)).low,
+      dailyTrend: trend.rows,
+      paymentBreakdown: payments.rows,
+    };
   });
   const waiting = await undelivered(pool, { groupBy: 'customer', agingDays: 30 });
   return {

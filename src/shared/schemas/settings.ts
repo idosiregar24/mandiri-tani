@@ -7,6 +7,9 @@ export const StoreSettings = z.object({
   name: RequiredText('Nama toko', 100),
   address: OptionalText(300),
   phone: OptionalText(50),
+  fax: OptionalText(50).default(null),
+  email: OptionalText(100).default(null),
+  receiptFooter: OptionalText(500).default(null),
 });
 export type StoreSettings = z.infer<typeof StoreSettings>;
 

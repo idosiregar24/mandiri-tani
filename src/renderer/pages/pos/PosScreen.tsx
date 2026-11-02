@@ -175,7 +175,14 @@ export function PosScreen() {
   useHotkeys(POS_HOTKEYS, handlers, dialog === null);
 
   const line = dialog && 'key' in dialog ? lines.find((l) => l.key === dialog.key) : undefined;
-  const storeInfo = settings.data?.store ?? { name: 'Toko', address: null, phone: null };
+  const storeInfo = settings.data?.store ?? {
+    name: 'Toko',
+    address: null,
+    phone: null,
+    fax: null,
+    email: null,
+    receiptFooter: null,
+  };
 
   return (
     <div className="bg-canvas flex h-screen gap-4 overflow-hidden p-4">
