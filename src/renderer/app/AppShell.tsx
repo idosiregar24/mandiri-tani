@@ -1,5 +1,6 @@
 // Backoffice layout: sidebar on clean canvas, content on white panel with breadcrumbs.
-import { CalendarDays, ChevronRight, Leaf, LogOut, UserRound } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Leaf, LogOut, UserRound } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { PreparationBanner } from '@/features/system/PreparationBanner';
@@ -16,6 +17,43 @@ export function AppShell() {
   const { pathname } = useLocation();
   const here = findNav(pathname);
 
+  // Collapsible sidebar menu sections
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('mandiri-tani.sidebar-collapsed-groups');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleGroup = (groupLabel: string) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [groupLabel]: !prev[groupLabel] };
+      try {
+        localStorage.setItem('mandiri-tani.sidebar-collapsed-groups', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  // If navigating to a page in a group, automatically expand it so active link is visible
+  useEffect(() => {
+    if (here?.group.label && collapsedGroups[here.group.label]) {
+      setCollapsedGroups((prev) => {
+        const next = { ...prev, [here.group.label]: false };
+        try {
+          localStorage.setItem('mandiri-tani.sidebar-collapsed-groups', JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    }
+  }, [here?.group.label]);
+
   return (
     <div className="bg-canvas flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible print:bg-background">
       <aside className="flex w-64 shrink-0 flex-col print:hidden">
@@ -30,57 +68,77 @@ export function AppShell() {
           </div>
         </div>
 
-        {/* Main Navigation */}
+        {/* Main Navigation with Collapsible Sections */}
         <nav className="flex-1 overflow-y-auto px-3 pb-3" aria-label="Menu utama">
-          {groups.map((g) => (
-            <div key={g.label || 'home'} className="mt-3 first:mt-0">
-              {g.label && (
-                <p className="text-muted-foreground/80 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider">
-                  {g.label}
-                </p>
-              )}
-              <ul className="space-y-0.5">
-                {g.items.map((item) => (
-                  <li key={item.to}>
-                    {item.soon ? (
-                      <span
-                        className="text-muted-foreground/60 flex h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm"
-                        aria-disabled="true"
-                      >
-                        <item.icon className="size-4 shrink-0" aria-hidden />
-                        <span className="flex-1 truncate">{item.label}</span>
-                        <span className="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-[10px]">
-                          Segera
-                        </span>
-                      </span>
-                    ) : (
-                      <NavLink
-                        to={item.to}
-                        end={item.to === '/'}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex h-10 items-center gap-3 rounded-xl border px-3 text-sm transition-all duration-150',
-                            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                            isActive
-                              ? 'bg-nav-active border-border text-foreground font-semibold shadow-xs'
-                              : 'text-foreground/80 hover:text-foreground border-transparent hover:bg-black/[0.04]',
-                          )
-                        }
-                      >
-                        <item.icon className="size-4 shrink-0" aria-hidden />
-                        <span className="flex-1 truncate">{item.label}</span>
-                        {item.count && totals.data && (
-                          <span className="text-muted-foreground bg-surface-muted border border-border rounded-full px-2 py-0.5 text-xs font-mono font-medium tabular-nums">
-                            {formatNumber(String(totals.data[item.count]))}
+          {groups.map((g) => {
+            const hasLabel = Boolean(g.label);
+            const isCollapsed = hasLabel && Boolean(collapsedGroups[g.label]);
+
+            return (
+              <div key={g.label || 'home'} className="mt-3 first:mt-0">
+                {hasLabel ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(g.label)}
+                    aria-expanded={!isCollapsed}
+                    className="group/btn flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                  >
+                    <span>{g.label}</span>
+                    <ChevronDown
+                      className={cn(
+                        'size-3.5 text-muted-foreground/60 transition-transform duration-200 group-hover/btn:text-foreground',
+                        isCollapsed && '-rotate-90',
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                ) : null}
+
+                {!isCollapsed && (
+                  <ul className="space-y-0.5 mt-0.5">
+                    {g.items.map((item) => (
+                      <li key={item.to}>
+                        {item.soon ? (
+                          <span
+                            className="text-muted-foreground/60 flex h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm"
+                            aria-disabled="true"
+                          >
+                            <item.icon className="size-4 shrink-0" aria-hidden />
+                            <span className="flex-1 truncate">{item.label}</span>
+                            <span className="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-[10px]">
+                              Segera
+                            </span>
                           </span>
+                        ) : (
+                          <NavLink
+                            to={item.to}
+                            end={item.to === '/'}
+                            className={({ isActive }) =>
+                              cn(
+                                'flex h-10 items-center gap-3 rounded-xl border px-3 text-sm transition-all duration-150',
+                                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                                isActive
+                                  ? 'bg-nav-active border-border text-foreground font-semibold shadow-xs'
+                                  : 'text-foreground/80 hover:text-foreground border-transparent hover:bg-black/[0.04]',
+                              )
+                            }
+                          >
+                            <item.icon className="size-4 shrink-0" aria-hidden />
+                            <span className="flex-1 truncate">{item.label}</span>
+                            {item.count && totals.data && (
+                              <span className="text-muted-foreground bg-surface-muted border border-border rounded-full px-2 py-0.5 text-xs font-mono font-medium tabular-nums">
+                                {formatNumber(String(totals.data[item.count]))}
+                              </span>
+                            )}
+                          </NavLink>
                         )}
-                      </NavLink>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         <UserCard />
