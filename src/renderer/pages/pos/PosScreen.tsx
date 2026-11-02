@@ -24,6 +24,7 @@ import type { PosProduct } from '@shared/schemas/pos';
 import type { Sale, SaleChannel } from '@shared/schemas/sales';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Notice } from '@/components/shared/Notice';
+import { PreparationBanner } from '@/features/system/PreparationBanner';
 import { Button } from '@/components/ui/button';
 import { useLogout } from '@/features/auth/api';
 import { useHealth } from '@/features/home/api';
@@ -188,6 +189,7 @@ export function PosScreen() {
     <div className="bg-canvas flex h-screen gap-4 overflow-hidden p-4">
       {/* Main card: mode, search, cart — sections divided by thin canvas bands (owner reference 2026-10-29). */}
       <main className="bg-background flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-xs">
+        <PreparationBanner />
         <header className="flex items-center gap-3 px-6 pt-5 pb-4">
           <button
             type="button"

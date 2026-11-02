@@ -5,6 +5,7 @@ import { registerIpc } from './ipc';
 import { Lifecycle } from './lifecycle';
 import { createLogger } from './logger';
 import { configureUserData, resolvePaths } from './paths';
+import { DesktopUpdater } from './updater';
 import { createMainWindow, DEV_RENDERER_URL, loadApp, loadBootScreen } from './window';
 
 configureUserData();
@@ -21,6 +22,7 @@ if (!app.requestSingleInstanceLock()) {
     appVersion: app.getVersion(),
     serveRenderer: !DEV_RENDERER_URL,
   });
+  const updater = new DesktopUpdater(lifecycle, logger);
   let win: BrowserWindow | null = null;
   let quitting = false;
 
@@ -36,13 +38,20 @@ if (!app.requestSingleInstanceLock()) {
   lifecycle.on('change', (status) => {
     if (!win || win.isDestroyed()) return;
     win.webContents.send(IPC.lifecycleChanged, status);
-    if (status.state === 'READY') void loadApp(win).catch((err) => logger.error({ err }, 'loading app failed'));
+    if (status.state === 'READY') {
+      void loadApp(win).catch((err) => logger.error({ err }, 'loading app failed'));
+      // Check for updates 10 seconds after reaching READY state
+      setTimeout(() => {
+        void updater.checkForUpdates().catch((err) => logger.warn({ err }, 'auto-update check failed'));
+      }, 10_000);
+    }
   });
 
   app.whenReady().then(async () => {
     logger.info({ version: app.getVersion(), packaged: app.isPackaged, dataDir: paths.dataDir }, 'app starting');
-    registerIpc(lifecycle, paths, logger);
+    registerIpc(lifecycle, paths, logger, updater);
     win = createMainWindow();
+    updater.setWindow(win);
     // Windows logoff/shutdown gives us seconds, not minutes: stop PostgreSQL right away.
     win.on('session-end', () => {
       logger.warn('Windows session ending — fast shutdown');

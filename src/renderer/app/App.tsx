@@ -26,6 +26,7 @@ import { StoreSettingsPage } from '@/pages/settings/StoreSettingsPage';
 import { UsersPage } from '@/pages/users/UsersPage';
 import { AuditLogsPage } from '@/pages/audit/AuditLogsPage';
 import { useSessionStore } from '@/lib/session';
+import { UpdateNotificationDialog } from '@/features/updater/UpdateNotificationDialog';
 import { AppShell } from './AppShell';
 import { AuthGate } from './AuthGate';
 import { BootGate } from './BootGate';
@@ -114,6 +115,7 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <AuthGate>
           <RouterProvider router={router} />
+          <UpdateNotificationDialog />
         </AuthGate>
       </QueryClientProvider>
     </BootGate>

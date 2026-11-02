@@ -14,8 +14,10 @@ import {
   RotateCcw,
   Save,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useUpdater } from '@/hooks/useUpdater';
 import type { BackupItem, BackupKind, SystemDiagnostics } from '@shared/schemas/backups';
 import type { PosSettings, StoreSettings } from '@shared/schemas/settings';
 import { Notice } from '@/components/shared/Notice';
@@ -53,10 +55,18 @@ function formatUptime(seconds: number): string {
   return `${hours} jam ${remMinutes} menit`;
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
 export function StoreSettingsPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'profile' | 'pos' | 'backups' | 'diagnostics' | 'export'>('profile');
+  const [tab, setTab] = useState<'profile' | 'pos' | 'backups' | 'diagnostics' | 'export' | 'updater'>('profile');
   const [msg, setMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const updater = useUpdater();
 
   const storeQuery = useQuery({
     queryKey: ['settings', 'store'],
@@ -251,6 +261,19 @@ export function StoreSettingsPage() {
           className="gap-2"
         >
           <FileSpreadsheet className="size-4" /> Ekspor Master Data
+        </Button>
+        <Button
+          variant={tab === 'updater' ? 'default' : 'ghost'}
+          onClick={() => {
+            setTab('updater');
+            setMsg(null);
+          }}
+          className="gap-2 relative"
+        >
+          <Sparkles className="size-4" /> Pembaruan Aplikasi
+          {updater.hasUpdate && (
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+          )}
         </Button>
       </div>
 
@@ -611,6 +634,169 @@ export function StoreSettingsPage() {
           <Button onClick={handleExport} disabled={exporting} className="gap-2">
             <Download className="size-4" /> {exporting ? 'Mengunduh...' : 'Unduh Master Data Excel (.xlsx)'}
           </Button>
+        </div>
+      )}
+
+      {tab === 'updater' && (
+        <div className="max-w-3xl space-y-6">
+          <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold">Pembaruan Desktop via GitHub Releases</h3>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Sistem mengecek ketersediaan rilis baru secara berkala di repository GitHub.
+                </p>
+              </div>
+              <Button
+                onClick={async () => {
+                  const res = await updater.checkForUpdates();
+                  if (res.hasUpdate) {
+                    setMsg({ tone: 'success', text: `Pembaruan versi ${res.version} tersedia!` });
+                  } else if (res.error) {
+                    setMsg({ tone: 'error', text: res.error });
+                  } else {
+                    setMsg({ tone: 'success', text: 'Aplikasi Anda sudah menggunakan versi paling mutakhir.' });
+                  }
+                }}
+                disabled={updater.isChecking || updater.isDownloading}
+                className="gap-2 shrink-0"
+              >
+                {updater.isChecking ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                {updater.isChecking ? 'Memeriksa...' : 'Periksa Pembaruan Sekarang'}
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="rounded-lg border p-4 space-y-1">
+                <span className="text-xs text-muted-foreground uppercase font-semibold">Versi Terpasang</span>
+                <p className="text-lg font-mono font-bold text-foreground">
+                  v{updater.status.currentVersion}
+                </p>
+                <p className="text-xs text-muted-foreground">Mandiri Tani POS (Desktop NSIS)</p>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-1">
+                <span className="text-xs text-muted-foreground uppercase font-semibold">Status Pembaruan</span>
+                <div className="flex items-center gap-2 pt-0.5">
+                  {updater.status.state === 'AVAILABLE' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <Sparkles className="size-4" /> Tersedia v{updater.status.availableVersion}
+                    </span>
+                  ) : updater.status.state === 'DOWNLOADING' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <Loader2 className="size-4 animate-spin" /> Mengunduh ({updater.status.progress?.percent ?? 0}%)
+                    </span>
+                  ) : updater.status.state === 'DOWNLOADED' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                      <CheckCircle2 className="size-4" /> Siap Dipasang (v{updater.status.availableVersion})
+                    </span>
+                  ) : updater.status.state === 'CHECKING' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" /> Memeriksa rilis...
+                    </span>
+                  ) : updater.status.state === 'ERROR' ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-error-ink">
+                      <ShieldAlert className="size-4" /> Gagal memeriksa
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                      <CheckCircle2 className="size-4" /> Versi Terbaru
+                    </span>
+                  )}
+                </div>
+                {updater.status.lastCheckedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Terakhir dicek: {formatDateTime(updater.status.lastCheckedAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Action Card if Update Available */}
+            {updater.status.state === 'AVAILABLE' && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground">
+                      Pembaruan v{updater.status.availableVersion} Siap Diunduh
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Proses pengunduhan berjalan di latar belakang tanpa mengganggu transaksi kasir.
+                    </p>
+                  </div>
+                  <Button onClick={() => void updater.downloadUpdate()} className="gap-2">
+                    <Download className="size-4" /> Unduh Sekarang
+                  </Button>
+                </div>
+
+                {updater.status.releaseNotes && (
+                  <div className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase">Catatan Rilis:</span>
+                    <div className="max-h-36 overflow-y-auto rounded border bg-background/80 p-2.5 font-mono text-xs whitespace-pre-wrap">
+                      {updater.status.releaseNotes}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {updater.status.state === 'DOWNLOADING' && (
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex justify-between text-xs font-medium">
+                  <span>Mengunduh installer dari GitHub Releases...</span>
+                  <span>{updater.status.progress?.percent ?? 0}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+                  <div
+                    className="bg-primary h-full transition-all duration-300"
+                    style={{ width: `${updater.status.progress?.percent ?? 0}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-muted-foreground text-xs">
+                  <span>{formatBytes(updater.status.progress?.bytesPerSecond)}/dtk</span>
+                  <span>
+                    {formatBytes(updater.status.progress?.transferred)} / {formatBytes(updater.status.progress?.total)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {updater.status.state === 'DOWNLOADED' && (
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50/50 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-sm text-emerald-950 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-4 text-emerald-600" /> Pembaruan Telah Selesai Diunduh
+                    </h4>
+                    <p className="text-xs text-emerald-800 mt-1">
+                      Aplikasi siap diperbarui ke versi v{updater.status.availableVersion}. Database PostgreSQL akan dimatikan secara aman sebelum aplikasi mulai ulang.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => void updater.installUpdate()}
+                    className="gap-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                  >
+                    <RefreshCw className="size-4" /> Pasang &amp; Mulai Ulang
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Release Instructions for Owner/Developer */}
+            <div className="rounded-lg bg-surface-muted/60 p-4 space-y-2 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">💡 Panduan Rilis Pembaruan (Untuk Developer / Owner):</p>
+              <ol className="list-decimal pl-4 space-y-1">
+                <li>Ubah nomor versi di file <code className="font-mono text-foreground">package.json</code> (misal dari 0.1.0 ke 0.2.0).</li>
+                <li>Jalankan perintah build &amp; release: <code className="font-mono text-foreground">npm run dist -- --publish always</code> (dengan token GitHub).</li>
+                <li>GitHub Releases otomatis mempublikasikan installer dan file manifest <code className="font-mono text-foreground">latest.yml</code>.</li>
+                <li>PC kasir akan otomatis menerima notifikasi pembaruan saat terkoneksi ke internet.</li>
+              </ol>
+            </div>
+          </div>
         </div>
       )}
 

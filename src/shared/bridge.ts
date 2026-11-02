@@ -10,6 +10,7 @@ import type {
   SavePdfRequest,
   SavePdfResult,
 } from './printing';
+import type { CheckUpdateResult, UpdaterStatus } from './updater';
 
 export const IPC = {
   lifecycleGet: 'pos:lifecycle:get',
@@ -26,6 +27,11 @@ export const IPC = {
   importChooseIpos: 'pos:import:choose-ipos',
   importCleanup: 'pos:import:cleanup',
   reportSavePdf: 'pos:report:save-pdf',
+  updaterGetStatus: 'pos:updater:get-status',
+  updaterCheck: 'pos:updater:check',
+  updaterDownload: 'pos:updater:download',
+  updaterInstall: 'pos:updater:install',
+  updaterStatusChanged: 'pos:updater:status-changed',
 } as const;
 
 /** Result of picking + restoring an iPOS backup (FR-MIG-01). Errors come back as data, not as thrown IPC errors. */
@@ -65,6 +71,14 @@ export interface PosBridge {
   cleanupIposImport(): Promise<void>;
   /** Saves the current page's print view (A4) as a PDF — the Owner picks the folder in a native dialog. */
   saveReportPdf(request: SavePdfRequest): Promise<SavePdfResult>;
+  /** Desktop application updater (GitHub Releases via electron-updater). */
+  updater: {
+    getStatus(): Promise<UpdaterStatus>;
+    check(): Promise<CheckUpdateResult>;
+    download(): Promise<void>;
+    install(): Promise<void>;
+    onStatusChange(listener: (status: UpdaterStatus) => void): () => void;
+  };
 }
 
 declare global {

@@ -11,6 +11,7 @@ import { SERVER_PORT } from './lifecycle';
 import type { AppPaths } from './paths';
 import { PgError } from './pg/PgManager';
 import { listPrinters, printDocument, printTest } from './printing';
+import type { DesktopUpdater } from './updater';
 import { isAllowedUrl } from './window';
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {
@@ -18,7 +19,12 @@ function assertTrustedSender(event: IpcMainInvokeEvent): void {
   if (!isAllowedUrl(url)) throw new Error(`IPC ditolak dari ${url || 'pengirim tidak dikenal'}`);
 }
 
-export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logger): void {
+export function registerIpc(
+  lifecycle: Lifecycle,
+  paths: AppPaths,
+  logger: Logger,
+  updater: DesktopUpdater,
+): void {
   ipcMain.handle(IPC.lifecycleGet, (event) => {
     assertTrustedSender(event);
     return lifecycle.status;
@@ -149,5 +155,26 @@ export function registerIpc(lifecycle: Lifecycle, paths: AppPaths, logger: Logge
     const saved = updateConfig(paths.configFile, { printers: settings }).printers;
     logger.info({ printers: saved }, 'printer settings saved');
     return saved;
+  });
+
+  // Desktop Updater (sprint-13 S13-4)
+  ipcMain.handle(IPC.updaterGetStatus, (event) => {
+    assertTrustedSender(event);
+    return updater.getStatus();
+  });
+
+  ipcMain.handle(IPC.updaterCheck, async (event) => {
+    assertTrustedSender(event);
+    return updater.checkForUpdates();
+  });
+
+  ipcMain.handle(IPC.updaterDownload, async (event) => {
+    assertTrustedSender(event);
+    await updater.downloadUpdate();
+  });
+
+  ipcMain.handle(IPC.updaterInstall, async (event) => {
+    assertTrustedSender(event);
+    await updater.quitAndInstall();
   });
 }

@@ -31,6 +31,7 @@ import { setupRoutes } from './modules/setup/routes';
 import { stockRoutes } from './modules/stock/routes';
 import { supplierRoutes } from './modules/suppliers/routes';
 import { syncRoutes } from './modules/sync/routes';
+import { systemRoutes } from './modules/system/routes';
 import { usersRoutes } from './modules/users/routes';
 
 export interface AppDeps {
@@ -109,6 +110,7 @@ export function createApp({ pool, logger, appVersion, localAccessKey, iposDb, ho
   api.use(auditLogsRoutes({ pool }));
   api.use(backupRoutes({ pool, hooks }));
   api.use(diagnosticsRoutes({ pool, appVersion, backupDir: hooks?.backupDir }));
+  api.use(systemRoutes({ pool, hooks }));
   api.use(deviceProtectedRoutes({ pool }));
   api.use(syncRoutes({ pool }));
   if (iposDb) api.use(importRoutes({ pool, iposDb, hooks }));

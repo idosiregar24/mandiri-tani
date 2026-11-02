@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC, type PosBridge } from '@shared/bridge';
 import type { LifecycleStatus } from '@shared/lifecycle';
+import type { UpdaterStatus } from '@shared/updater';
 
 const bridge: PosBridge = {
   getLifecycle: () => ipcRenderer.invoke(IPC.lifecycleGet),
@@ -22,6 +23,17 @@ const bridge: PosBridge = {
   chooseIposBackup: () => ipcRenderer.invoke(IPC.importChooseIpos),
   cleanupIposImport: () => ipcRenderer.invoke(IPC.importCleanup),
   saveReportPdf: (request) => ipcRenderer.invoke(IPC.reportSavePdf, request),
+  updater: {
+    getStatus: () => ipcRenderer.invoke(IPC.updaterGetStatus),
+    check: () => ipcRenderer.invoke(IPC.updaterCheck),
+    download: () => ipcRenderer.invoke(IPC.updaterDownload),
+    install: () => ipcRenderer.invoke(IPC.updaterInstall),
+    onStatusChange(listener) {
+      const handler = (_event: IpcRendererEvent, status: UpdaterStatus) => listener(status);
+      ipcRenderer.on(IPC.updaterStatusChanged, handler);
+      return () => ipcRenderer.removeListener(IPC.updaterStatusChanged, handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('pos', bridge);
