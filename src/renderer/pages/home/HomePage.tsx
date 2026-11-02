@@ -1,155 +1,160 @@
-// Beranda: Owner overview — turnover & gross profit today / this
-// month vs the previous period, top products, what needs attention — then the system status.
-// A cashier sees only their own sales.
 import {
   Boxes,
+  CalendarDays,
   CheckCircle2,
-  Database,
+  CreditCard,
   FileInput,
-  FolderOpen,
-  Printer,
-  Server,
+  FileText,
+  ShoppingCart,
+  Sparkles,
   Truck,
   Users,
-  XCircle,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { useHealth, useMasterTotals } from '@/features/home/api';
 import { Dashboard } from '@/features/reports/Dashboard';
 import { desktopBridge } from '@/lib/desktop';
-import { formatNumber } from '@/lib/format';
-import { useCan } from '@/lib/session';
+import { formatDate } from '@/lib/format';
+import { ROLE_LABELS, useCan, useRole, useSessionUser } from '@/lib/session';
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 4 && hour < 11) return 'Selamat Pagi';
+  if (hour >= 11 && hour < 15) return 'Selamat Siang';
+  if (hour >= 15 && hour < 18) return 'Selamat Sore';
+  return 'Selamat Malam';
+}
 
 export function HomePage() {
+  const user = useSessionUser();
+  const role = useRole();
   const health = useHealth();
   const totals = useMasterTotals();
   const bridge = desktopBridge();
   const canImport = useCan('imports.ipos');
-  const n = (v: number | undefined) => (v === undefined ? '—' : formatNumber(String(v)));
+  const greeting = getGreeting();
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Beranda"
-        description="Ringkasan penjualan dan operasional toko Mandiri Tani."
-        actions={
-          canImport &&
-          totals.data?.products === 0 && (
-            <Button asChild size="lg" className="h-10 text-sm">
-              <Link to="/impor-ipos">
-                <FileInput className="size-4" /> Impor dari iPOS
+    <div className="space-y-6">
+      {/* 1. Hero Greeting & Operational Command Hub */}
+      <div className="rounded-2xl border border-border bg-gradient-to-r from-card via-card to-surface-muted/50 p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                {greeting}, {user?.fullName || 'Pengguna'}! 👋
+              </h1>
+              <span className="inline-flex items-center rounded-full border border-border bg-surface-muted px-2.5 py-0.5 text-xs font-semibold text-foreground/80">
+                {ROLE_LABELS[role]}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Pusat kendali operasional Toko Pertanian Mandiri Tani — pantau penjualan harian, pergerakan stok, dan piutang petani.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-background">
+              <CalendarDays className="size-3.5 text-primary" />
+              {formatDate(new Date())}
+            </span>
+            {health.data?.db.ok && (
+              <span className="text-xs font-medium text-emerald-800 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-emerald-50">
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                Sistem Siap
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Action Bar (Aksi Cepat Operasional) */}
+        <div className="mt-6 pt-5 border-t border-border/60">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Sparkles className="size-3.5 text-amber-500" /> Aksi Cepat Operasional
+            </span>
+            {canImport && totals.data?.products === 0 && (
+              <Button asChild size="sm" variant="outline" className="h-8 text-xs text-primary">
+                <Link to="/impor-ipos">
+                  <FileInput className="size-3.5 mr-1.5" /> Impor Data dari iPOS
+                </Link>
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            <Button asChild size="lg" className="h-12 justify-start px-3 text-sm font-semibold shadow-xs">
+              <Link to="/kasir" className="flex items-center justify-between w-full">
+                <span className="flex items-center gap-2 truncate">
+                  <ShoppingCart className="size-4 shrink-0" /> Kasir POS
+                </span>
+                <span className="text-[10px] font-mono opacity-80 border border-primary-foreground/30 px-1 rounded-sm">
+                  F1
+                </span>
               </Link>
             </Button>
-          )
-        }
-      />
 
-      <Dashboard />
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-12 justify-start px-3 text-sm font-medium hover:border-foreground/30"
+            >
+              <Link to="/pembelian" className="flex items-center gap-2 truncate">
+                <Truck className="size-4 shrink-0 text-muted-foreground" /> Masuk Barang
+              </Link>
+            </Button>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Barang"
-          icon={Boxes}
-          value={n(totals.data?.products)}
-          hint="Barang aktif & nonaktif"
-          to="/barang"
-          showInfo
-          infoTooltip="Total master data produk pertanian"
-        />
-        <StatCard
-          label="Pelanggan"
-          icon={Users}
-          value={n(totals.data?.customers)}
-          hint="Termasuk pelanggan UMUM"
-          to="/pelanggan"
-          showInfo
-          infoTooltip="Total kontak pelanggan terdaftar"
-        />
-        <StatCard
-          label="Supplier"
-          icon={Truck}
-          value={n(totals.data?.suppliers)}
-          hint="Pemasok barang"
-          to="/supplier"
-          showInfo
-          infoTooltip="Total pemasok & pabrik pupuk/pestisida"
-        />
-        <StatCard
-          label="Database"
-          icon={Database}
-          value={health.data?.db.ok ? 'Baik' : health.isPending ? '…' : 'Bermasalah'}
-          badge={health.data?.db.ok ? 'Normal' : 'Periksa'}
-          badgeTone={health.data?.db.ok ? 'success' : 'error'}
-          showInfo
-          infoTooltip="Status koneksi PostgreSQL lokal"
-          hint={
-            health.data?.db.ok
-              ? `PostgreSQL ${health.data.db.version} · ${health.data.db.latency_ms} ms`
-              : health.data?.db.error
-          }
-        />
-      </section>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-12 justify-start px-3 text-sm font-medium hover:border-foreground/30"
+            >
+              <Link to="/stok" className="flex items-center gap-2 truncate">
+                <Boxes className="size-4 shrink-0 text-muted-foreground" /> Cek Stok
+              </Link>
+            </Button>
 
-      <section className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden">
-        <div className="border-b border-border/80 px-6 py-4">
-          <h2 className="text-base font-bold text-foreground tracking-tight">Status Sistem</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Kondisi kesehatan service desktop dan pangkalan data lokal</p>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-12 justify-start px-3 text-sm font-medium hover:border-foreground/30"
+            >
+              <Link to="/pelanggan" className="flex items-center gap-2 truncate">
+                <Users className="size-4 shrink-0 text-muted-foreground" /> Pelanggan
+              </Link>
+            </Button>
+
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-12 justify-start px-3 text-sm font-medium hover:border-foreground/30"
+            >
+              <Link to="/piutang" className="flex items-center gap-2 truncate">
+                <CreditCard className="size-4 shrink-0 text-muted-foreground" /> Buku Piutang
+              </Link>
+            </Button>
+
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-12 justify-start px-3 text-sm font-medium hover:border-foreground/30"
+            >
+              <Link to="/laporan/penjualan" className="flex items-center gap-2 truncate">
+                <FileText className="size-4 shrink-0 text-muted-foreground" /> Laporan Toko
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="divide-y divide-border/60">
-          <StatusRow
-            icon={<Server className="size-4" />}
-            label="Server Toko"
-            ok={health.isSuccess}
-            text={
-              health.isSuccess
-                ? `Berjalan normal (versi ${health.data.version})`
-                : health.isError
-                  ? health.error.message
-                  : 'Memeriksa…'
-            }
-          />
-          <StatusRow
-            icon={<Database className="size-4" />}
-            label="Database PostgreSQL"
-            ok={health.data?.db.ok ?? false}
-            text={health.data?.db.ok ? `PostgreSQL ${health.data.db.version} (Port 5432 / internal)` : (health.data?.db.error ?? 'Memeriksa…')}
-          />
-        </div>
-      </section>
+      </div>
 
-      {bridge && (
-        <div className="flex flex-wrap gap-3">
-          <Button asChild variant="outline" size="sm" className="h-9 text-xs">
-            <Link to="/uji-cetak">
-              <Printer className="size-3.5" /> Uji Cetak Printer
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" className="h-9 text-xs" onClick={() => void bridge.openLogFolder()}>
-            <FolderOpen className="size-3.5" /> Buka Folder Log
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusRow({ icon, label, ok, text }: { icon: ReactNode; label: string; ok: boolean; text: string }) {
-  return (
-    <div className="flex items-center gap-3 px-6 py-3.5 text-xs sm:text-sm hover:bg-surface-muted/50 transition-colors">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-muted-foreground border border-border/50">
-        {icon}
-      </span>
-      <span className="w-40 font-semibold text-foreground">{label}</span>
-      {ok ? (
-        <CheckCircle2 className="text-emerald-700 size-4 shrink-0" aria-label="baik" />
-      ) : (
-        <XCircle className="text-rose-700 size-4 shrink-0" aria-label="bermasalah" />
-      )}
-      <span className="text-muted-foreground text-xs sm:text-sm">{text}</span>
+      {/* 2. Main Dashboard Content */}
+      <Dashboard totals={totals.data} health={health.data} bridge={bridge} />
     </div>
   );
 }

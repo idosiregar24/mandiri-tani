@@ -425,3 +425,4 @@ function generateCustomerInsights(summary: CustomerSummary) {
 
   return insights;
 }
+

@@ -380,6 +380,17 @@ export interface DashboardFigure {
   profit?: string;
 }
 
+export interface DashboardRecentSale {
+  id: string;
+  number: string;
+  trxAt: string;
+  customerName: string;
+  itemCount: number;
+  total: string;
+  paidCash: string;
+  paidCredit: string;
+}
+
 export interface DashboardReport {
   ownOnly: boolean;
   today: DashboardFigure;
@@ -387,6 +398,7 @@ export interface DashboardReport {
   /** Month to date vs the same days of last month. */
   month: DashboardFigure;
   lastMonth: DashboardFigure;
+  recentSales?: DashboardRecentSale[];
   /** Owner only from here on. */
   topProducts?: { productId: string; name: string; qty: string; baseUnit: string; sales: string }[];
   lowStock?: number;

@@ -83,11 +83,22 @@ const dateOnly = new Intl.DateTimeFormat('id-ID', {
   month: 'short',
   year: 'numeric',
 });
+const timeOnly = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 /** "24 Okt 2026 09.15" */
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return '—';
   return dateTime.format(new Date(value)).replace(',', '');
+}
+
+/** "09.15" */
+export function formatTime(value: string | Date | null | undefined): string {
+  if (!value) return '—';
+  return timeOnly.format(new Date(value));
 }
 
 /** "24 Okt 2026" */

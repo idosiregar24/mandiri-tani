@@ -52,7 +52,26 @@ export async function dashboard(pool: Pool, ctx: RequestCtx): Promise<DashboardR
     for (const k of keys) out[k] = await turnover(db, periods[k][0], periods[k][1], cashier);
     return out;
   });
-  if (ownOnly) return { ownOnly, ...figures };
+  if (ownOnly) {
+    const recent = await withReport(pool, async (db) => {
+      const r = await db.query<NonNullable<DashboardReport['recentSales']>[number]>(
+        `SELECT s.id, s.number, s.trx_at AS "trxAt",
+                coalesce(c.name, 'Pelanggan UMUM') AS "customerName",
+                coalesce((SELECT sum(qty) FROM sale_items WHERE sale_id = s.id), 0)::int AS "itemCount",
+                s.total::text,
+                (s.paid_amount - s.change_amount)::text AS "paidCash",
+                s.credit_amount::text AS "paidCredit"
+         FROM sales s
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE ${COUNTED_SALE} AND s.cashier_id = $1
+         ORDER BY s.trx_at DESC, s.number DESC
+         LIMIT 5`,
+        [cashier],
+      );
+      return r.rows;
+    });
+    return { ownOnly, ...figures, recentSales: recent };
+  }
   for (const k of keys) {
     const [from, to] = periods[k];
     figures[k].profit = (await profitLoss(pool, { from, to })).grossProfit;
@@ -96,12 +115,26 @@ export async function dashboard(pool: Pool, ctx: RequestCtx): Promise<DashboardR
        GROUP BY m.id, m.name ORDER BY sum(p.amount) DESC`,
       [periods.month[0], periods.month[1]],
     );
+    const recent = await db.query<NonNullable<DashboardReport['recentSales']>[number]>(
+      `SELECT s.id, s.number, s.trx_at AS "trxAt",
+              coalesce(c.name, 'Pelanggan UMUM') AS "customerName",
+              coalesce(trim_scale((SELECT sum(qty) FROM sale_items WHERE sale_id = s.id))::text, '0')::int AS "itemCount",
+              s.total::text,
+              (s.paid_amount - s.change_amount)::text AS "paidCash",
+              s.credit_amount::text AS "paidCredit"
+       FROM sales s
+       LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE ${COUNTED_SALE}
+       ORDER BY s.trx_at DESC, s.number DESC
+       LIMIT 5`,
+    );
     return {
       topProducts: top.rows,
       receivables: rec.rows[0]!,
       lowStock: (await stockSummary(db, wh.id)).low,
       dailyTrend: trend.rows,
       paymentBreakdown: payments.rows,
+      recentSales: recent.rows,
     };
   });
   const waiting = await undelivered(pool, { groupBy: 'customer', agingDays: 30 });
