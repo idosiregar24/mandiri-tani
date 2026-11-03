@@ -1,10 +1,23 @@
 // Main window with locked-down web preferences (security-standards §5).
 import { BrowserWindow, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { SERVER_PORT } from './lifecycle';
 
 export const DEV_RENDERER_URL = process.env.ELECTRON_RENDERER_URL;
 export const APP_URL = `http://127.0.0.1:${SERVER_PORT}/`;
+
+export function getAppIconPath(): string | undefined {
+  const candidates = [
+    join(__dirname, '../../build/icon.ico'),
+    join(__dirname, '../../build/icon.png'),
+    join(process.resourcesPath, 'icon.ico'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return undefined;
+}
 
 /** Origins the window may show: the Vite dev server (dev) or the embedded server (prod). */
 export function isAllowedUrl(url: string): boolean {
@@ -19,7 +32,9 @@ export function isAllowedUrl(url: string): boolean {
 }
 
 export function createMainWindow(): BrowserWindow {
+  const icon = getAppIconPath();
   const win = new BrowserWindow({
+    ...(icon ? { icon } : {}),
     width: 1366,
     height: 768,
     minWidth: 1024,
