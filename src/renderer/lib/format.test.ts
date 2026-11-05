@@ -9,6 +9,7 @@ import {
   parseMoneyInput,
   parseQtyInput,
   qtyInputText,
+  typedMoneyInput,
 } from './format';
 
 describe('format (id-ID)', () => {
@@ -42,6 +43,21 @@ describe('format (id-ID)', () => {
     expect(parseMoneyInput('12a')).toBeNull();
     expect(parseMoneyInput('-5')).toBeNull();
     expect(parseMoneyInput('1.50.000')).toBeNull();
+  });
+
+  it('regroups money while typing, ignoring its own thousands dots', () => {
+    // Typing 500000 one key at a time: each keystroke lands after the field's own dot.
+    const keys = '500000';
+    let text = '';
+    for (const k of keys) text = typedMoneyInput(text + k)?.text ?? 'INVALID';
+    expect(text).toBe('500.000');
+    expect(typedMoneyInput('4.50000')).toEqual({ value: '450000', text: '450.000' });
+    expect(typedMoneyInput('1.00.000')).toEqual({ value: '100000', text: '100.000' }); // digit deleted
+    expect(typedMoneyInput('1.500.000,')).toEqual({ value: '1500000', text: '1.500.000,' });
+    expect(typedMoneyInput('15000,5')).toEqual({ value: '15000.5', text: '15.000,5' });
+    expect(typedMoneyInput('')).toEqual({ value: '', text: '' });
+    expect(typedMoneyInput('12a')).toBeNull();
+    expect(typedMoneyInput('1,234')).toBeNull();
   });
 
   it('round-trips money and quantity input text', () => {

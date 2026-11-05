@@ -1,7 +1,11 @@
-import { useState, type ComponentProps } from 'react';
+import { useLayoutEffect, useRef, useState, type ComponentProps } from 'react';
 import { Input } from '@/components/ui/input';
-import { moneyInputText, parseMoneyInput } from '@/lib/format';
+import { moneyInputText, parseMoneyInput, typedMoneyInput } from '@/lib/format';
 import { cn } from '@/lib/utils';
+
+/** Characters that survive regrouping — the caret is placed by counting these. */
+const isKept = (ch: string | undefined) => ch !== undefined && /[\d,]/.test(ch);
+const countKept = (s: string) => [...s].filter(isKept).length;
 
 interface MoneyInputProps extends Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'type'> {
   /** Decimal string ("640000") or "" when empty — never a JS number. */
@@ -22,6 +26,19 @@ export function MoneyInput({ value, onChange, onBlur, className, ...props }: Mon
     if (parseMoneyInput(text) !== value) setText(moneyInputText(value));
   }
 
+  // Regrouping rewrites the text; put the caret back after the same digits so editing in the
+  // middle ("1.500.000" → fix one digit) does not jump to the end.
+  const caret = useRef<{ el: HTMLInputElement; keep: number } | null>(null);
+  useLayoutEffect(() => {
+    const c = caret.current;
+    if (!c) return;
+    caret.current = null;
+    const t = c.el.value;
+    let pos = 0;
+    for (let kept = 0; pos < t.length && kept < c.keep; pos++) if (isKept(t[pos])) kept++;
+    c.el.setSelectionRange(pos, pos);
+  });
+
   return (
     <div className="relative">
       <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base">
@@ -33,16 +50,17 @@ export function MoneyInput({ value, onChange, onBlur, className, ...props }: Mon
         autoComplete="off"
         value={text}
         onChange={(e) => {
-          const next = e.target.value;
-          const parsed = parseMoneyInput(next);
-          if (parsed === null) {
+          const el = e.target;
+          const next = el.value;
+          const typed = typedMoneyInput(next);
+          if (typed === null) {
             setText(next);
             return;
           }
-          // Re-group thousands while typing whole rupiah ("15000" → "15.000").
-          setText(next.includes(',') ? next : moneyInputText(parsed));
-          setSeen(parsed);
-          onChange(parsed);
+          caret.current = { el, keep: countKept(next.slice(0, el.selectionStart ?? next.length)) };
+          setText(typed.text);
+          setSeen(typed.value);
+          onChange(typed.value);
         }}
         onBlur={(e) => {
           setText(moneyInputText(value));

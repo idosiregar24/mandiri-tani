@@ -47,6 +47,19 @@ export function parseMoneyInput(text: string): string | null {
 }
 
 /**
+ * Text being typed into a MoneyInput → its value and the regrouped text to show. The thousands
+ * dots were inserted by the field itself, so they are ignored: after "4.500" the next keystroke
+ * gives "4.5000", which must become 45000 ("45.000"), not invalid text that keeps the old value.
+ */
+export function typedMoneyInput(text: string): { value: string; text: string } | null {
+  const [intTyped = '', ...fracTyped] = text.split(',');
+  const value = parseMoneyInput([intTyped.replace(/\./g, ''), ...fracTyped].join(','));
+  if (value === null) return null;
+  if (value === '' || fracTyped.length === 0) return { value, text: moneyInputText(value) };
+  return { value, text: `${moneyInputText(value.split('.')[0] ?? '')},${fracTyped[0] ?? ''}` };
+}
+
+/**
  * A quantity typed with a decimal comma → decimal string: "2,5" → "2.5", "0,001" → "0.001".
  * Thousands separators are not allowed in quantities (ambiguous with conversions like 0.001).
  */
