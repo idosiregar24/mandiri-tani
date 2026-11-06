@@ -1,24 +1,8 @@
-// Login screen (sprint-2 D2, S2-5): pick your name card, then type the PIN (6 digits, submits by
-// itself) or the password. Keyboard-first: the name cards and the secret box are all reachable
-// with Tab/Enter, Esc goes back to the name cards.
-import {
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  Delete,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  LogIn,
-  ShieldCheck,
-  Sparkles,
-  Sprout,
-  Store,
-  UserCheck,
-} from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+// Login screen (sprint-2 D2, S2-5): pick your name, then type the PIN (6 digits, submits by
+// itself) or the password. Keyboard-first: the name rows and the secret box are all reachable
+// with Tab/Enter, Esc goes back to the name list.
+import { ChevronRight, Delete, Eye, EyeOff, Hash, KeyRound, Loader2, Sprout } from 'lucide-react';
+import { useRef, useState, type ButtonHTMLAttributes, type FormEvent } from 'react';
 import type { LoginMethod, LoginUserCard } from '@shared/schemas/auth';
 import { Notice } from '@/components/shared/Notice';
 import { Button } from '@/components/ui/button';
@@ -29,262 +13,167 @@ import { cn } from '@/lib/utils';
 
 const PIN_LENGTH = 6;
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0]?.slice(0, 2).toUpperCase() || 'U';
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-function useLiveClock() {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const timeString = now.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  const dateString = now.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  return { timeString, dateString };
+function Avatar({ name }: { name: string }) {
+  return (
+    <span className="bg-tani-green-light text-tani-green-dark flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold">
+      {initials(name)}
+    </span>
+  );
 }
 
 export function LoginScreen() {
   const users = useLoginUsers(true);
   const notice = useSessionStore((s) => s.notice);
   const [chosen, setPicked] = useState<LoginUserCard | null>(null);
-  const { timeString, dateString } = useLiveClock();
-
-  // If there is only one user in the database, jump directly to credentials entry.
+  // One user only → straight to the PIN/password box.
   const picked = chosen ?? (users.data?.length === 1 ? users.data[0]! : null);
+  const onBack = users.data && users.data.length > 1 ? () => setPicked(null) : undefined;
 
   return (
-    <main className="relative min-h-screen w-full bg-canvas flex flex-col justify-between p-4 sm:p-6 lg:p-8 overflow-hidden select-none">
-      {/* Decorative ambient background glows */}
-      <div
-        className="pointer-events-none absolute -top-40 -left-40 size-[32rem] rounded-full bg-emerald-500/10 blur-3xl"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -bottom-40 -right-40 size-[32rem] rounded-full bg-amber-500/10 blur-3xl"
-        aria-hidden
-      />
+    <main className="bg-canvas flex min-h-screen flex-col items-center justify-center p-6">
+      <div className="bg-background grid w-full max-w-5xl gap-6 rounded-[2rem] p-5 shadow-sm lg:grid-cols-2">
+        <BrandPanel />
 
-      {/* Main card container */}
-      <div className="relative z-10 mx-auto my-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-border/80 bg-card shadow-xl grid lg:grid-cols-12">
-        {/* Left column: Brand & Operational Hub */}
-        <aside className="relative lg:col-span-5 bg-gradient-to-br from-[#0c2e14] via-[#14421b] to-[#1e5828] text-white p-8 lg:p-10 flex flex-col justify-between overflow-hidden">
-          {/* Subtle botanical backdrop ornament */}
-          <div
-            className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-emerald-400/10 blur-2xl"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute -bottom-20 -left-20 size-60 rounded-full bg-green-300/10 blur-2xl"
-            aria-hidden
-          />
-
-          {/* Brand header */}
-          <div className="relative z-10 space-y-4">
-            <div className="flex items-center gap-3.5">
-              <span className="size-13 rounded-2xl bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg ring-2 ring-white/20">
-                <Sprout className="size-7" aria-hidden />
+        <section className="flex flex-col items-center justify-center px-2 py-6 sm:px-8">
+          <div className="w-full max-w-sm">
+            <div className="mb-5 flex items-center justify-center gap-2.5">
+              <span className="bg-primary text-primary-foreground flex size-11 items-center justify-center rounded-full">
+                <Sprout className="size-5" aria-hidden />
               </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold tracking-tight text-white">MANDIRI TANI</h1>
-                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-200 backdrop-blur-xs">
-                    v0.2.0
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-100/80 font-medium">Sistem Kasir & Operasional Toko</p>
-              </div>
+              <span className="text-xl font-bold">Mandiri Tani</span>
             </div>
 
-            <p className="text-xs text-emerald-100/70 leading-relaxed pt-1">
-              Platform kasir cepat, manajemen stok FIFO terintegrasi, dan administrasi operasional toko pertanian.
-            </p>
-          </div>
-
-          {/* Operational live clock & status widget */}
-          <div className="relative z-10 my-8 space-y-4">
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4.5 backdrop-blur-md shadow-inner">
-              <div className="flex items-center justify-between text-xs text-emerald-200 mb-1.5">
-                <span className="inline-flex items-center gap-1.5 font-medium">
-                  <Clock className="size-3.5 text-emerald-300" />
-                  Waktu Sistem
-                </span>
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
-                  <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Hub Aktif
-                </span>
-              </div>
-              <div className="text-2xl font-bold tracking-tight text-white font-mono">{timeString} WIB</div>
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-100/90 font-medium">
-                <Calendar className="size-3.5 text-emerald-300/80" />
-                {dateString}
-              </div>
-            </div>
-
-            {/* Quick feature highlights */}
-            <div className="space-y-2 text-xs text-emerald-100/85">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5 text-emerald-300 shrink-0" />
-                <span>Kasir Cepat & Faktur Continuous Form LX-310</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5 text-emerald-300 shrink-0" />
-                <span>Manajemen Stok Bertingkat & HPP FIFO</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5 text-emerald-300 shrink-0" />
-                <span>Enkripsi Kredensial Argon2id & Audit Log</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Developer credit card */}
-          <div className="relative z-10 rounded-2xl border border-white/10 bg-black/20 p-3.5 backdrop-blur-xs text-xs">
-            <p className="font-semibold text-white/95 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-amber-300" />
-              Dikembangkan oleh Ido Refael Siregar
-            </p>
-            <p className="mt-1 text-[11px] font-mono text-emerald-200/80">081363554262 &bull; idosiregar2006@gmail.com</p>
-          </div>
-        </aside>
-
-        {/* Right column: Interactive Authentication */}
-        <section className="relative lg:col-span-7 bg-card p-6 sm:p-8 lg:p-10 flex flex-col justify-between">
-          <div className="space-y-6">
-            {/* Header info */}
-            <div>
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">
-                  {picked ? 'Verifikasi Masuk' : 'Selamat Datang'}
-                </h2>
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-surface-muted px-2.5 py-1 rounded-full border border-border/60">
-                  <Store className="size-3.5 text-primary" />
-                  Komputer Kasir
-                </div>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {picked
-                  ? 'Masukkan kredensial keamanan untuk memulai sesi.'
-                  : 'Silakan pilih akun Anda untuk membuka sesi transaksi toko.'}
+            <div className="mb-6 text-center">
+              <h1 className="text-[2rem] leading-tight font-bold tracking-tight">Selamat Datang</h1>
+              <p className="text-muted-foreground mt-1 text-sm">
+                {picked ? 'Silakan masuk ke akun Anda' : 'Pilih nama Anda untuk masuk'}
               </p>
             </div>
 
             {notice && (
-              <Notice tone="warning" className="text-xs">
+              <Notice tone="warning" className="mb-4">
                 {notice}
               </Notice>
             )}
 
             {users.isPending && (
-              <div className="py-12 text-center">
-                <Loader2 className="mx-auto size-9 animate-spin text-primary" aria-label="Memuat daftar pengguna" />
-                <p className="mt-3 text-xs text-muted-foreground">Menyiapkan profil akun...</p>
+              <div className="text-muted-foreground flex items-center justify-center gap-2 py-10">
+                <Loader2 className="size-5 animate-spin" aria-hidden />
+                Memuat…
               </div>
             )}
-
             {users.isError && <Notice tone="error">{users.error.message}</Notice>}
 
-            {/* State A: User selection */}
             {users.data && !picked && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Pilih salah satu profil di bawah ini:</span>
-                  <span className="font-medium text-foreground">{users.data.length} Akun Terdaftar</span>
-                </div>
-
-                <ul className="grid gap-3 sm:grid-cols-2">
-                  {users.data.map((u, i) => {
-                    const isOwner = u.role === 'OWNER';
-                    return (
-                      <li key={u.id}>
-                        <button
-                          type="button"
-                          autoFocus={i === 0}
-                          onClick={() => setPicked(u)}
-                          className={cn(
-                            'group flex min-h-20 w-full items-center gap-3.5 rounded-2xl border border-border p-3.5 text-left transition-all duration-150',
-                            'bg-card hover:bg-surface-muted hover:border-primary/50 hover:shadow-md active:scale-[0.98]',
-                            'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'size-12 rounded-xl flex items-center justify-center font-bold text-base shrink-0 shadow-xs transition-transform group-hover:scale-105',
-                              isOwner
-                                ? 'bg-gradient-to-br from-amber-500 to-amber-700 text-white'
-                                : 'bg-gradient-to-br from-emerald-600 to-green-700 text-white',
-                            )}
-                          >
-                            {getInitials(u.fullName)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="block truncate text-base font-bold text-foreground group-hover:text-primary transition-colors">
-                                {u.fullName}
-                              </span>
-                            </div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <span
-                                className={cn(
-                                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border shrink-0',
-                                  isOwner
-                                    ? 'bg-amber-50 text-amber-900 border-amber-200/80'
-                                    : 'bg-emerald-50 text-emerald-900 border-emerald-200/80',
-                                )}
-                              >
-                                {isOwner ? (
-                                  <ShieldCheck className="size-3 text-amber-600" />
-                                ) : (
-                                  <UserCheck className="size-3 text-emerald-600" />
-                                )}
-                                {ROLE_LABELS[u.role]}
-                              </span>
-                              <span className="text-[11px] text-muted-foreground truncate">
-                                {u.methods.includes('PIN') ? 'PIN' : 'Password'}
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+              <ul className="space-y-2">
+                {users.data.map((u, i) => (
+                  <li key={u.id}>
+                    <button
+                      type="button"
+                      autoFocus={i === 0}
+                      onClick={() => setPicked(u)}
+                      className={cn(
+                        'bg-canvas flex min-h-14 w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left',
+                        'hover:bg-tani-green-light focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                      )}
+                    >
+                      <Avatar name={u.fullName} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{u.fullName}</span>
+                        <span className="text-muted-foreground text-sm">{ROLE_LABELS[u.role]}</span>
+                      </span>
+                      <ChevronRight className="text-muted-foreground size-4" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
 
-            {/* State B: Credentials entry form */}
-            {picked && (
-              <SecretForm
-                key={picked.id}
-                user={picked}
-                onBack={users.data && users.data.length > 1 ? () => setPicked(null) : undefined}
-              />
-            )}
-          </div>
-
-          {/* Subtle bottom note */}
-          <div className="mt-6 pt-4 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>Mandiri Tani POS &bull; Terminal Utama</span>
-            <span className="font-mono">Port 5438 &bull; PG 18</span>
+            {picked && <SecretForm key={picked.id} user={picked} onBack={onBack} />}
           </div>
         </section>
       </div>
+
+      <p className="text-muted-foreground mt-5 text-center text-xs">
+        Dibuat oleh Ido Refael Siregar · 081363554262 · idosiregar2006@gmail.com
+      </p>
     </main>
+  );
+}
+
+/** Left half: brand colour, headline and a small field illustration (inline SVG — app is offline). */
+function BrandPanel() {
+  return (
+    <aside className="from-tani-green-dark via-tani-green relative hidden min-h-[520px] flex-col overflow-hidden rounded-3xl bg-gradient-to-b to-[color-mix(in_oklab,var(--color-tani-green)_55%,white)] p-10 text-white lg:flex">
+      <h2 className="text-[2.5rem] leading-[1.2] font-bold tracking-tight">
+        Kelola toko tani
+        <br />
+        jadi lebih{' '}
+        <span className="relative inline-block">
+          mudah.
+          <svg
+            className="absolute -bottom-2 left-0 w-full"
+            viewBox="0 0 120 10"
+            fill="none"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <path d="M2 7 C 35 2, 85 2, 118 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </span>
+      </h2>
+      <p className="mt-6 max-w-xs text-sm leading-relaxed text-white/85">
+        Jual, cek stok, dan catat piutang pelanggan dari satu aplikasi di komputer kasir.
+      </p>
+
+      <FieldIllustration className="absolute inset-x-0 bottom-0 w-full" />
+    </aside>
+  );
+}
+
+function FieldIllustration({ className }: { className?: string }) {
+  // Back hills → front hill, sun, a row of sprouts and two fertiliser sacks.
+  return (
+    <svg className={className} viewBox="0 0 400 300" fill="none" aria-hidden>
+      <circle cx="318" cy="70" r="28" className="fill-tani-harvest" />
+      <path d="M0 165 C 80 115, 170 130, 240 150 S 360 135, 400 118 V300 H0Z" className="fill-white/15" />
+      <path d="M0 212 C 90 175, 210 186, 280 202 S 370 196, 400 185 V300 H0Z" className="fill-white/25" />
+      <path d="M0 256 C 120 232, 260 236, 400 246 V300 H0Z" className="fill-tani-green-dark" />
+
+      {[24, 70, 116, 162].map((x, i) => (
+        <g key={x} transform={`translate(${x} ${214 - (i % 2) * 6}) scale(1.6)`}>
+          <path d="M10 26 V8" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M10 14 C 2 14, -2 6, 0 0 C 7 1, 11 7, 10 14Z" className="fill-white" />
+          <path d="M10 10 C 17 10, 22 3, 21 -3 C 14 -2, 9 3, 10 10Z" className="fill-white/80" />
+        </g>
+      ))}
+
+      <Sack x={302} y={178} scale={1.1} label="BENIH" />
+      <Sack x={232} y={186} scale={1.25} label="PUPUK" />
+    </svg>
+  );
+}
+
+function Sack({ x, y, scale, label }: { x: number; y: number; scale: number; label: string }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`}>
+      <path d="M6 10 C 6 2, 64 2, 64 10 L 70 74 C 70 82, 0 82, 0 74Z" className="fill-tani-cream" />
+      <path d="M6 10 C 20 16, 50 16, 64 10" stroke="var(--color-tani-border)" strokeWidth="2" />
+      <rect x="12" y="32" width="46" height="22" rx="3" className="fill-tani-green" />
+      <text x="35" y="47" textAnchor="middle" className="fill-white" fontSize={10} fontWeight={700}>
+        {label}
+      </text>
+      <text x="35" y="67" textAnchor="middle" className="fill-tani-soil" fontSize={8} fontWeight={600}>
+        50 KG
+      </text>
+    </g>
   );
 }
 
@@ -295,7 +184,6 @@ function SecretForm({ user, onBack }: { user: LoginUserCard; onBack?: () => void
   const login = useLogin();
   const input = useRef<HTMLInputElement>(null);
   const other = user.methods.find((m) => m !== method);
-  const isOwner = user.role === 'OWNER';
 
   const submit = (value = secret) => {
     if (!value || login.isPending) return;
@@ -315,26 +203,11 @@ function SecretForm({ user, onBack }: { user: LoginUserCard; onBack?: () => void
     submit();
   };
 
-  const handleNumpad = (digit: string) => {
+  const typePin = (value: string) => {
     if (login.isPending) return;
-    if (secret.length < PIN_LENGTH) {
-      const next = secret + digit;
-      setSecret(next);
-      if (next.length === PIN_LENGTH) {
-        submit(next);
-      }
-    }
-  };
-
-  const handleBackspace = () => {
-    if (login.isPending) return;
-    setSecret((s) => s.slice(0, -1));
-    input.current?.focus();
-  };
-
-  const handleClear = () => {
-    if (login.isPending) return;
-    setSecret('');
+    const v = value.replace(/\D/g, '').slice(0, PIN_LENGTH);
+    setSecret(v);
+    if (v.length === PIN_LENGTH) submit(v);
     input.current?.focus();
   };
 
@@ -344,70 +217,19 @@ function SecretForm({ user, onBack }: { user: LoginUserCard; onBack?: () => void
       onKeyDown={(e) => {
         if (e.key === 'Escape' && onBack) onBack();
       }}
-      className="space-y-5"
+      className="space-y-4"
     >
-      {/* Active User Card Banner */}
-      <div className="rounded-2xl border border-border/80 bg-surface-muted/60 p-3.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={cn(
-              'size-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 text-white shadow-xs',
-              isOwner
-                ? 'bg-gradient-to-br from-amber-500 to-amber-700'
-                : 'bg-gradient-to-br from-emerald-600 to-green-700',
-            )}
-          >
-            {getInitials(user.fullName)}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-base font-bold truncate text-foreground">{user.fullName}</p>
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border shrink-0',
-                  isOwner
-                    ? 'bg-amber-50 text-amber-900 border-amber-200/80'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-200/80',
-                )}
-              >
-                {isOwner ? <ShieldCheck className="size-3 text-amber-600" /> : <UserCheck className="size-3 text-emerald-600" />}
-                {ROLE_LABELS[user.role]}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              @{user.username} &bull; {method === 'PIN' ? 'Mode Cepat PIN 6 Digit' : 'Mode Kata Sandi'}
-            </p>
-          </div>
+      <div className="bg-canvas flex items-center gap-3 rounded-xl px-3.5 py-2.5">
+        <Avatar name={user.fullName} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{user.fullName}</p>
+          <p className="text-muted-foreground text-sm">{ROLE_LABELS[user.role]}</p>
         </div>
-
-        {onBack && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
-            onClick={onBack}
-            title="Ganti Pengguna (Esc)"
-          >
-            <ArrowLeft className="size-3.5 mr-1" />
-            <span className="hidden sm:inline">Ganti</span>
-            <kbd className="ml-1 text-[10px] bg-background border px-1 py-0.5 rounded text-muted-foreground font-mono">
-              Esc
-            </kbd>
-          </Button>
-        )}
       </div>
 
-      {/* Secret Entry: PIN or Password */}
       {method === 'PIN' ? (
-        <div className="space-y-4">
-          <div className="text-center">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Masukkan 6 Digit PIN
-            </span>
-          </div>
-
-          {/* Hidden input to handle hardware keyboard / numpad input */}
+        <div>
+          {/* Real input catches keyboard / numpad typing; the boxes below only show progress. */}
           <input
             ref={input}
             autoFocus
@@ -417,167 +239,104 @@ function SecretForm({ user, onBack }: { user: LoginUserCard; onBack?: () => void
             maxLength={PIN_LENGTH}
             value={secret}
             aria-label="PIN"
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D/g, '').slice(0, PIN_LENGTH);
-              setSecret(v);
-              if (v.length === PIN_LENGTH) submit(v);
-            }}
+            onChange={(e) => typePin(e.target.value)}
             className="sr-only"
           />
-
-          {/* Visual 6-slot indicator */}
           <div
-            onClick={() => input.current?.focus()}
-            className="flex justify-center items-center gap-3 sm:gap-4 my-2 cursor-pointer select-none"
             role="presentation"
-            title="Klik untuk mengetik PIN"
+            onClick={() => input.current?.focus()}
+            className="mb-3 grid cursor-text grid-cols-6 gap-2"
           >
-            {Array.from({ length: PIN_LENGTH }).map((_, idx) => {
-              const isFilled = idx < secret.length;
-              const isCurrent = idx === secret.length && !login.isPending;
-              return (
-                <div
-                  key={idx}
-                  className={cn(
-                    'size-11 sm:size-13 rounded-2xl border-2 flex items-center justify-center transition-all duration-150',
-                    isFilled
-                      ? 'border-primary bg-primary/10 shadow-xs'
-                      : isCurrent
-                        ? 'border-primary ring-4 ring-primary/20 bg-background scale-105'
-                        : 'border-border bg-surface-muted/50',
-                  )}
-                >
-                  {isFilled ? (
-                    <span className="size-4 rounded-full bg-primary animate-in zoom-in-50 duration-150 shadow-xs" />
-                  ) : (
-                    <span
-                      className={cn(
-                        'size-2 rounded-full',
-                        isCurrent ? 'bg-primary/50 animate-pulse' : 'bg-muted-foreground/20',
-                      )}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* On-screen tactile numpad */}
-          <div className="grid grid-cols-3 gap-2 max-w-[260px] mx-auto w-full pt-1">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-              <button
-                key={digit}
-                type="button"
-                onClick={() => {
-                  handleNumpad(digit);
-                  input.current?.focus();
-                }}
-                disabled={login.isPending}
+            {Array.from({ length: PIN_LENGTH }, (_, i) => (
+              <div
+                key={i}
                 className={cn(
-                  'h-11 rounded-xl text-lg font-bold border border-border bg-card text-foreground shadow-2xs',
-                  'hover:bg-surface-muted hover:border-foreground/20 active:scale-95 transition-all duration-100',
-                  'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                  'disabled:opacity-50 disabled:pointer-events-none',
+                  'bg-canvas flex h-12 items-center justify-center rounded-xl border border-transparent',
+                  i === secret.length && !login.isPending && 'border-primary bg-background',
                 )}
               >
-                {digit}
-              </button>
+                {i < secret.length && <span className="bg-foreground size-2.5 rounded-full" />}
+              </div>
             ))}
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={login.isPending || !secret}
-              aria-label="Bersihkan PIN"
-              className={cn(
-                'h-11 rounded-xl text-xs font-semibold uppercase tracking-wider border border-border bg-surface-muted/60 text-muted-foreground',
-                'hover:bg-surface-muted hover:text-foreground active:scale-95 transition-all duration-100',
-                'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                'disabled:opacity-40 disabled:pointer-events-none',
-              )}
-            >
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+              <NumKey key={d} onClick={() => typePin(secret + d)} disabled={login.isPending}>
+                {d}
+              </NumKey>
+            ))}
+            <NumKey onClick={() => typePin('')} disabled={login.isPending || !secret} className="text-sm">
               Hapus
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleNumpad('0');
-                input.current?.focus();
-              }}
-              disabled={login.isPending}
-              className={cn(
-                'h-11 rounded-xl text-lg font-bold border border-border bg-card text-foreground shadow-2xs',
-                'hover:bg-surface-muted hover:border-foreground/20 active:scale-95 transition-all duration-100',
-                'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                'disabled:opacity-50 disabled:pointer-events-none',
-              )}
-            >
+            </NumKey>
+            <NumKey onClick={() => typePin(secret + '0')} disabled={login.isPending}>
               0
-            </button>
-            <button
-              type="button"
-              onClick={handleBackspace}
+            </NumKey>
+            <NumKey
+              onClick={() => typePin(secret.slice(0, -1))}
               disabled={login.isPending || !secret}
               aria-label="Hapus satu angka"
-              className={cn(
-                'h-11 rounded-xl flex items-center justify-center border border-border bg-surface-muted/60 text-muted-foreground',
-                'hover:bg-surface-muted hover:text-foreground active:scale-95 transition-all duration-100',
-                'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                'disabled:opacity-40 disabled:pointer-events-none',
-              )}
             >
-              <Delete className="size-5" />
-            </button>
+              <Delete className="size-5" aria-hidden />
+            </NumKey>
           </div>
+
+          {login.isPending && (
+            <p className="text-muted-foreground mt-3 flex items-center justify-center gap-2 text-sm">
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Memeriksa PIN…
+            </p>
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
-          <label className="block">
-            <span className="mb-2 block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Kata Sandi Pengguna
-            </span>
-            <div className="relative">
-              <Input
-                ref={input}
-                autoFocus
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={secret}
-                placeholder="Masukkan kata sandi..."
-                aria-label="Password"
-                onChange={(e) => setSecret(e.target.value)}
-                className="h-12 text-base pr-11"
-              />
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-          </label>
-
-          <Button type="submit" size="lg" className="h-12 w-full text-base font-semibold" disabled={!secret || login.isPending}>
-            {login.isPending ? <Loader2 className="animate-spin" /> : <LogIn className="size-4 mr-2" />} Masuk ke Sistem
+        <>
+          <div className="relative">
+            <Input
+              ref={input}
+              autoFocus
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={secret}
+              placeholder="Password"
+              aria-label="Password"
+              onChange={(e) => setSecret(e.target.value)}
+              className="bg-canvas focus-visible:bg-background h-12 rounded-xl border-transparent pr-11 shadow-none"
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowPassword((s) => !s)}
+              aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-4 -translate-y-1/2"
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-12 w-full rounded-xl text-base"
+            disabled={!secret || login.isPending}
+          >
+            {login.isPending && <Loader2 className="animate-spin" aria-hidden />}
+            Masuk
           </Button>
-        </div>
+        </>
       )}
 
-      {login.isError && (
-        <Notice tone="error" className="text-xs">
-          {login.error.message}
-        </Notice>
-      )}
+      {login.isError && <Notice tone="error">{login.error.message}</Notice>}
 
-      {/* Switch method action */}
       {other && (
-        <div className="pt-2 text-center">
+        <>
+          <div className="text-muted-foreground flex items-center gap-3 pt-1 text-xs">
+            <span className="bg-border h-px flex-1" />
+            atau masuk dengan
+            <span className="bg-border h-px flex-1" />
+          </div>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground hover:text-foreground"
+            variant="outline"
+            className="h-11 w-full rounded-xl"
             onClick={() => {
               setMethod(other);
               setSecret('');
@@ -585,11 +344,40 @@ function SecretForm({ user, onBack }: { user: LoginUserCard; onBack?: () => void
               setTimeout(() => input.current?.focus());
             }}
           >
-            <KeyRound className="size-3.5 mr-1.5" />
-            {other === 'PIN' ? 'Masuk Menggunakan PIN 6-Digit' : 'Masuk Menggunakan Kata Sandi'}
+            {other === 'PIN' ? <Hash aria-hidden /> : <KeyRound aria-hidden />}
+            {other === 'PIN' ? 'PIN 6 angka' : 'Password'}
           </Button>
-        </div>
+        </>
+      )}
+
+      {onBack && (
+        <p className="text-muted-foreground pt-1 text-center text-sm">
+          Bukan {user.fullName.split(/\s+/)[0]}?{' '}
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-tani-green-dark font-semibold underline-offset-2 hover:underline"
+          >
+            Ganti pengguna
+          </button>{' '}
+          <kbd className="text-muted-foreground rounded border px-1 font-mono text-[11px]">Esc</kbd>
+        </p>
       )}
     </form>
+  );
+}
+
+function NumKey({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'bg-canvas h-11 rounded-xl text-lg font-semibold tabular-nums',
+        'hover:bg-tani-green-light focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+        'disabled:pointer-events-none disabled:opacity-40',
+        className,
+      )}
+      {...props}
+    />
   );
 }
