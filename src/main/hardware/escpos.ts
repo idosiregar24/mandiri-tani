@@ -1,5 +1,7 @@
 // Minimal ESC/POS encoder for the cashier's thermal receipt printer (KSR struk) —
-// PRD §8.1. Same plain-text approach as the ESC/P encoder: printer fonts, no graphics.
+// PRD §8.1. Same plain-text approach as the ESC/P encoder: printer fonts; the only graphic is
+// the store logo (GS v 0 raster).
+import { base64ToBytes, type MonoBitmap, rowBytes } from '@shared/logo';
 import { toPrinterText } from './escp';
 
 const ESC = 0x1b;
@@ -40,6 +42,15 @@ export class EscPosWriter {
   /** GS ! — width/height multipliers 1–2 (store name, TOTAL). */
   size(width: 1 | 2, height: 1 | 2): this {
     return this.raw(GS, 0x21, ((width - 1) << 4) | (height - 1));
+  }
+
+  /** GS v 0 — raster bit image (normal size); follows the current ESC a alignment. */
+  raster(bitmap: MonoBitmap): this {
+    const x = rowBytes(bitmap.width);
+    const y = bitmap.height;
+    this.raw(GS, 0x76, 0x30, 0, x & 0xff, x >> 8, y & 0xff, y >> 8);
+    for (const b of base64ToBytes(bitmap.data)) this.out.push(b);
+    return this;
   }
 
   /** Feed n lines. */

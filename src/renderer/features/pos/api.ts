@@ -1,5 +1,5 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { Customer, PaymentMethod } from '@shared/schemas/master';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Customer, PaymentMethod, QuickCustomerInput } from '@shared/schemas/master';
 import type { PosLookupResult, PosProduct } from '@shared/schemas/pos';
 import type { OutstandingLine } from '@shared/schemas/pickups';
 import type {
@@ -11,6 +11,7 @@ import type {
   Sale,
   SaleListItem,
 } from '@shared/schemas/sales';
+import type { ReceiptLogo } from '@shared/logo';
 import type { PosSettings, StoreSettings } from '@shared/schemas/settings';
 import { apiGet, apiGetPage, apiPost, toQuery } from '@/lib/api-client';
 
@@ -40,19 +41,34 @@ export async function lookupCode(code: string): Promise<PosLookupResult | null> 
   }
 }
 
+/** Empty box → the customers served most recently (regulars come back); typed → matches by name. */
 export function useCustomerSearch(q: string, enabled: boolean) {
   return useQuery({
     queryKey: posKeys.customers(q),
-    queryFn: ({ signal }) => apiGetPage<Customer>(`/customers${toQuery({ q, pageSize: 20 })}`, { signal }),
+    queryFn: ({ signal }) =>
+      apiGetPage<Customer>(`/customers${toQuery({ q, pageSize: 20, sort: q ? 'name' : 'recent' })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Cashier's quick add (name, HP, village) from the customer picker. */
+export function useQuickCreateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: QuickCustomerInput) => apiPost<Customer>('/customers/quick', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['pos', 'customers'] });
+      void qc.invalidateQueries({ queryKey: ['customers'] });
+    },
   });
 }
 
 // ------------------------------------------------------------------ Sprint 6: pay, print, history
 
 export interface ReceiptSettings {
-  store: StoreSettings;
+  /** Store profile + the logo bitmaps to print (null = no logo). */
+  store: StoreSettings & { logo: ReceiptLogo | null };
   pos: PosSettings;
 }
 

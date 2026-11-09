@@ -1132,38 +1132,43 @@ rangkap NCR; cetak grafis lambat dan buram.
 Acuan visual lokal: `.claude/file/contoh-faktur-ipos-LX310.jpg` (gitignored —
 memuat nama pelanggan).
 
-**Tata letak Faktur Penjualan (JL) — meniru faktur iPOS** yang sudah dikenal
-toko & pelanggan. 12 cpi = **96 kolom**, 6 lpi = **33 baris** per ½ halaman:
+**Tata letak Faktur Penjualan (JL) — sama persis dengan faktur iPOS** (keputusan
+owner 2026-11-09: "pokoknya buat sama persis"; foto faktur iPOS 0001567/JL/UTM/0926).
+12 cpi = **96 kolom**, 6 lpi = **33 baris** per ½ halaman:
 
 ```
-[logo] FAKTUR PENJUALAN            No Transaksi : 0001789/JL/UTM/1026      Dept : UTM
-       MANDIRI TANI                Tanggal      : 24/10/2026 12.05         User : SARI
-       JL. POROS RAPP km. 72       Pelanggan    : PAK PAIMA SIMAMORA JALAN SEHAT
-       0813-6144-1706              Alamat       : JL. SEHAT
+[logo]    FAKTUR PENJUALAN               No Transaksi : 0001567/JL/UTM/0926    Dept.  : UTM
+          MANDIRI TANI                   Tanggal      : 12/09/2026 14.47.12    User   : ADMIN
+          JL. POROS RAPP km. 72          Kode Sales   :                        PPN    : Include
+          0813-6144-1706                 Pelanggan    : OP. CONTOH             Hal 1/2
+          -                              Alamat       : JL. RAPP               *** SALINAN ***
+================================================================================================
+No. Kode Item   Nama Item                         Jml Satuan         Harga   Pot           Total
+================================================================================================
+1   NPK 13.8.27 NPK 13.8.27 MAHKOTA             13,00 ZAK       615.000,00  0,00    7.995.000,00
+    MAHKOTA
 ------------------------------------------------------------------------------------------------
-No Kode Item      Nama Item                         Jml Satuan        Harga  Pot%          Total
-------------------------------------------------------------------------------------------------
- 1 NARA UP 5      NARA UP 5 LTR                    1,00 PAIL     330.000,00  0,00     330.000,00
- 2 METSULINDO 100 METSULINDO 100 GR                1,00 BTL       45.000,00  0,00      45.000,00
-------------------------------------------------------------------------------------------------
-Keterangan :                       Jml Item   :   2,00    Sub Total   :              375.000,00
-                                   Potongan   :   0,00    Biaya Lain  :                    0,00
-       Penerima                    Tanggal Jt : 03/11/2026 TOTAL AKHIR :             375.000,00
-                                                          Tunai       :                    0,00
-                                                          Transfer    :                    0,00
-   (..............)                                       Kredit      :              375.000,00
-Terbilang : tiga ratus tujuh puluh lima ribu rupiah       Kembali     :                    0,00
+Keterangan :                         Jml Item   :            13,00 Sub Total   :    7.995.000,00
+  Hormat Kami         Penerima       Potongan   : 0,00 %      0,00 Total Akhir :    7.995.000,00
+                                     Pajak      : 0,00 %      0,00 DP PO       :            0,00
+                                     Biaya Lain :             0,00 Deposit     :            0,00
+  (.........)        (.........)     Tanggal Jt : 22/09/2026       Tunai       :            0,00
+Terbilang : tujuh juta sembilan ratus sembilan puluh lima ribu     Kredit      :    7.995.000,00
+            rupiah                                                 K. Debit    :            0,00
+                                                                   K. Kredit   :            0,00
+                                                                   Kembali     :            0,00
 ```
 
 | Bagian | Isi | Catatan |
 |---|---|---|
-| Kop kiri | Logo (opsional), "FAKTUR PENJUALAN" tebal, nama, alamat, telepon toko dari `settings.store` | Logo dicetak sebagai bit-image ESC/P (`ESC *`, ±1") bila `receipt.show_logo` — lebih lambat ±1 dtk; default **aktif** agar mirip iPOS |
-| Kop kanan | No Transaksi (**tebal**), Tanggal + jam, Pelanggan, Alamat, Dept (kode gudang), User (nama kasir login — bukan "ADMIN") | "Kode Sales" & "PPN" iPOS tidak dicetak (tidak dipakai; PPN muncul bila FR-POS-13 aktif) |
-| Tabel | No · Kode Item · Nama Item · Jml · Satuan · Harga · Pot% · Total | Lebar kolom: 2·14·30·6·6·12·5·13 (+ spasi = 96). Nama/kode panjang dibungkus ke baris berikut seperti iPOS |
-| Ringkasan tengah | Jml Item, Potongan, Biaya Lain, Tanggal Jt (hanya bila ada kredit) | |
-| Ringkasan kanan | Sub Total, **TOTAL AKHIR** (tebal), lalu **hanya metode yang dipakai**: Tunai, Transfer, QRIS, Kredit, Kembali | Baris iPOS yang selalu 0 (DP PO, Deposit, K. Debit, K. Kredit) tidak dicetak |
-| Kiri bawah | Keterangan, kotak tanda tangan **Penerima**, **Terbilang** (FR-POS-30) | Ruang kosong di kiri bawah dibiarkan untuk **stempel toko** (dibubuhkan manual seperti sekarang) |
-| Tambahan | Blok **BARANG BELUM DIAMBIL** (FR-PKP-04) di atas Keterangan bila ada sisa; "Hal 1/2" bila baris barang > ±12 | Nota > 1 halaman: kop & header tabel diulang |
+| Kop kiri | Logo (opsional), "FAKTUR PENJUALAN" tebal, nama toko, alamat & telepon apa adanya dari `settings.store`, fax (atau "-") | Logo diunggah Owner di Pengaturan › Profil Toko (`settings.logo`: gambar PNG + bitmap 1-bit per printer, `printOnFaktur`/`printOnStruk`, default **aktif** agar mirip iPOS). Faktur: bit-image ESC/P `ESC * 1` (120×72 dpi) di 10 kolom kiri × 5 baris kop (0,83"), dua lintasan per baris agar jarak baris tetap 1/6". Struk thermal: raster ESC/POS `GS v 0` di tengah atas nama toko (maks. 30×15 mm). Kolom kop tetap (0 / 41 / 79) dengan atau tanpa logo |
+| Kop tengah & kanan | No Transaksi, Tanggal + jam, Kode Sales (kosong), Pelanggan, Alamat · Dept (kode gudang dari nomor), User (nama kasir login), PPN Include | Slot kanan yang kosong dipakai "Hal n/m" dan tanda SALINAN / DIBATALKAN |
+| Tabel | No · Kode Item · Nama Item · Jml · Satuan · Harga · Pot · Total | Lebar 4·12·30·7·7·14·6·16 = 96, garis ganda di atas & bawah judul tabel. Kode & nama panjang **dibungkus** ke baris berikut di kolomnya sendiri |
+| Ringkasan tengah | Jml Item, Potongan (% + rupiah), Pajak, Biaya Lain, Tanggal Jt | |
+| Ringkasan kanan | Sub Total, Total Akhir, DP PO, Deposit, Tunai, Kredit, K. Debit, K. Kredit (transfer/QRIS), Kembali | Semua baris iPOS dicetak walau 0, persis seperti faktur lama |
+| Kiri bawah | Keterangan, **dua tanda tangan "Hormat Kami" dan "Penerima"**, Terbilang (FR-POS-30, dibungkus di samping ringkasan kanan) | |
+| Tambahan | "BARANG BELUM DIAMBIL" sebagai Keterangan (FR-PKP-04) bila ada sisa; nota > ±14 baris barang lanjut ke lembar berikut dengan kop & judul tabel diulang dan "Bersambung ke halaman berikutnya ..." | |
+| Pratinjau | Tombol tambahan **Pratinjau** di samping setiap tombol Cetak (owner 2026-11-09) — opsional, alur cetak tidak lewat pratinjau | Dokumen sama persis dengan yang dikirim ke printer |
 
 - **Nota Kasir (KSR)**: dicetak di **printer struk thermal**, bukan LX-310
   (format struk di atas). Bila printer struk mati, kasir boleh mencetak KSR

@@ -8,6 +8,7 @@ import { dec, Decimal } from '@shared/money';
 import type { PartyPayment } from '@shared/schemas/ar-ap';
 import { MoneyInput } from '@/components/shared/MoneyInput';
 import { Notice } from '@/components/shared/Notice';
+import { PrintPreviewButton } from '@/components/shared/PrintPreviewButton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ import { formatRupiah } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { uuidv7 } from '@shared/uuid';
 import { SIDE, type Side, useOpenDocs, usePay } from './api';
-import { printPayment } from './print';
+import { paymentDocument, printPayment } from './print';
 
 const ICONS = { CASH: Banknote, TRANSFER: Landmark, QRIS: QrCode, CREDIT: Banknote } as const;
 const date = (iso: string) => iso.split('-').reverse().join('/');
@@ -293,6 +294,13 @@ function PaymentDone({ side, payment, onClose }: { side: Side; payment: PartyPay
       {print && print !== 'printing' && !print.ok && <Notice tone="warning">{print.message}</Notice>}
       {print && print !== 'printing' && print.ok && <p className="text-success-ink">Bukti bayar tercetak.</p>}
       <div className="flex justify-end gap-2">
+        {side === 'AR' && store && (
+          <PrintPreviewButton
+            className="h-11"
+            build={() => paymentDocument(payment, store, { copy: print !== null })}
+            onPrint={() => void run(print !== null)}
+          />
+        )}
         {side === 'AR' && (
           <Button variant="outline" className="h-11" disabled={!store} onClick={() => void run(print !== null)}>
             <Printer /> Cetak bukti bayar

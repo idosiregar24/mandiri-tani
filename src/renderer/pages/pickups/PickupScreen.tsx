@@ -18,14 +18,16 @@ import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { dec } from '@shared/money';
 import type { Permission } from '@shared/permissions';
+import type { ReceiptStore } from '@shared/receipts';
 import type { OutstandingLine, Pickup, PickupMethod } from '@shared/schemas/pickups';
 import { AuthorizeDialog } from '@/components/shared/AuthorizeDialog';
 import { Notice } from '@/components/shared/Notice';
+import { PrintPreviewButton } from '@/components/shared/PrintPreviewButton';
 import { QtyInput } from '@/components/shared/QtyInput';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { cancelPickup, createPickup, fetchPickup, printPickup, usePickups } from '@/features/pickups/api';
+import { cancelPickup, createPickup, fetchPickup, pickupDocument, printPickup, usePickups } from '@/features/pickups/api';
 import { useOutstanding, useReceiptSettings } from '@/features/pos/api';
 import { CustomerDialog } from '@/features/pos/dialogs';
 import { Band, Chip, Kbd, Section, SummaryItem } from '@/features/pos/layout';
@@ -56,7 +58,11 @@ export function PickupScreen() {
     email: null,
     receiptFooter: null,
   };
-  const initialCustomer = (location.state as { customerId?: string } | null)?.customerId ?? null;
+  const nav = location.state as { customerId?: string; from?: 'kasir' } | null;
+  const initialCustomer = nav?.customerId ?? null;
+  // Opened from the cashier screen (F11 / "barang belum diambil") → back to it; from the menu → back to the menu.
+  const back =
+    nav?.from === 'kasir' ? { to: '/kasir', label: 'Kembali ke kasir' } : { to: '/', label: 'Kembali ke menu' };
   const [customer, setCustomer] = useState<CartCustomer | null>(null);
   const [customerId, setCustomerId] = useState<string | null>(initialCustomer);
   const [q, setQ] = useState('');
@@ -158,10 +164,10 @@ export function PickupScreen() {
         <header className="flex items-center gap-3 px-6 pt-5 pb-4">
           <button
             type="button"
-            onClick={() => navigate('/kasir')}
+            onClick={() => navigate(back.to)}
             className="text-muted-foreground hover:text-foreground -ml-1 rounded-md p-1"
-            aria-label="Kembali ke kasir"
-            title="Kembali ke kasir"
+            aria-label={back.label}
+            title={back.label}
           >
             <ArrowLeft className="size-5" />
           </button>
@@ -329,9 +335,17 @@ export function PickupScreen() {
         </div>
       </aside>
 
-      {dlg === 'customer' && <CustomerDialog onClose={() => setDlg(null)} onPick={pickCustomer} />}
+      {dlg === 'customer' && (
+        // A brand-new customer has nothing to pick up — no quick add here.
+        <CustomerDialog onClose={() => setDlg(null)} onPick={pickCustomer} allowCreate={false} />
+      )}
       {dlg === 'history' && (
-        <PickupHistoryDialog customerId={owner} onClose={() => setDlg(null)} onPrint={(p) => void runPrint(p, true)} />
+        <PickupHistoryDialog
+          customerId={owner}
+          store={store}
+          onClose={() => setDlg(null)}
+          onPrint={(p) => void runPrint(p, true)}
+        />
       )}
       {done && (
         <Dialog open onOpenChange={(o) => !o && (setDone(null), setPrint(null))}>
@@ -353,7 +367,12 @@ export function PickupScreen() {
               ))}
             </ul>
             <PrintStatus status={print} onRetry={() => void runPrint(done)} />
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <PrintPreviewButton
+                className="h-11"
+                build={() => pickupDocument(done, store)}
+                onPrint={() => void runPrint(done)}
+              />
               <Button autoFocus className="h-11 px-6" onClick={() => (setDone(null), setPrint(null))}>
                 Selesai <kbd className="ml-1 text-xs opacity-70">Enter</kbd>
               </Button>
@@ -453,10 +472,12 @@ function OutstandingTable({
 
 function PickupHistoryDialog({
   customerId,
+  store,
   onClose,
   onPrint,
 }: {
   customerId: string | null;
+  store: ReceiptStore;
   onClose: () => void;
   onPrint: (p: Pickup) => void;
 }) {
@@ -526,6 +547,12 @@ function PickupHistoryDialog({
               >
                 <Printer /> Cetak
               </Button>
+              <PrintPreviewButton
+                size="sm"
+                className="h-9"
+                build={async () => pickupDocument(await fetchPickup(r.id), store, true)}
+                onPrint={async () => onPrint(await fetchPickup(r.id))}
+              />
               <Button
                 variant="outline"
                 size="sm"

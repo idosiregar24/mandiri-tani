@@ -43,7 +43,7 @@ END $$;
 -- 1. SISTEM
 -- =============================================================================
 CREATE TABLE settings (
-  key         text PRIMARY KEY,   -- 'store','receipt','printer','pos','tax','rounding','stock','backup'
+  key         text PRIMARY KEY,   -- 'store','logo','receipt','printer','pos','tax','rounding','stock','backup'
   value       jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()

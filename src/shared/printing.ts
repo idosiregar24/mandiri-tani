@@ -3,6 +3,7 @@
 //  - faktur: Epson LX-310 dot matrix (ESC/P), continuous form 9.5" x 5.5" — JL faktur, bukti AB
 //  - struk:  thermal receipt printer (ESC/POS), roll paper — KSR cashier receipts
 import { z } from 'zod';
+import { MonoBitmapSchema } from './logo';
 
 export const PRINTER_ROLES = ['faktur', 'struk'] as const;
 export type PrinterRole = (typeof PRINTER_ROLES)[number];
@@ -124,6 +125,18 @@ export const PrintDocument = z.object({
   role: z.enum(PRINTER_ROLES),
   title: z.string().max(80),
   pages: z.array(z.array(PrintLine).max(150)).min(1).max(30),
+  /**
+   * Store logo, repeated on every page. struk: printed centered just before line `line`.
+   * faktur: drawn in the first `columns` characters of the lines from `line` on (12 dots per
+   * line); the builder leaves those characters blank.
+   */
+  logo: z
+    .object({
+      bitmap: MonoBitmapSchema,
+      line: z.number().int().min(0).max(150),
+      columns: z.number().int().min(0).max(40),
+    })
+    .optional(),
 });
 export type PrintDocument = z.infer<typeof PrintDocument>;
 

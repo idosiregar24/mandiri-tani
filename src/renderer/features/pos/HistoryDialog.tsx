@@ -4,10 +4,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Ban, Loader2, Printer, Search, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import type { Permission } from '@shared/permissions';
+import type { ReceiptStore } from '@shared/receipts';
 import type { Sale, SaleListItem } from '@shared/schemas/sales';
-import type { StoreSettings } from '@shared/schemas/settings';
 import { AuthorizeDialog } from '@/components/shared/AuthorizeDialog';
 import { Notice } from '@/components/shared/Notice';
+import { PrintPreviewButton } from '@/components/shared/PrintPreviewButton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import { fetchSale, todayJakarta, useTodaySales, voidSale } from './api';
 import { Chip } from './layout';
 import { SaleReturnDialog } from './SaleReturnDialog';
 import { focusScan } from './focus';
+import { saleDocument } from './print';
 import { PrintStatus, usePrintSale } from './SaleDoneDialog';
 
 const time = (iso: string) =>
@@ -26,7 +28,7 @@ const time = (iso: string) =>
     new Date(iso),
   );
 
-export function HistoryDialog({ store, onClose }: { store: StoreSettings; onClose: () => void }) {
+export function HistoryDialog({ store, onClose }: { store: ReceiptStore; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const [voiding, setVoiding] = useState<SaleListItem | null>(null);
@@ -49,7 +51,7 @@ export function HistoryDialog({ store, onClose }: { store: StoreSettings; onClos
     <>
       <Dialog open={!voiding && !returning} onOpenChange={(o) => !o && onClose()}>
         <DialogContent
-          className="sm:max-w-3xl"
+          className="sm:max-w-4xl"
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             focusScan();
@@ -124,6 +126,12 @@ export function HistoryDialog({ store, onClose }: { store: StoreSettings; onClos
                     <Button variant="outline" size="sm" className="h-9" onClick={() => void reprint(r)}>
                       <Printer /> Cetak
                     </Button>
+                    <PrintPreviewButton
+                      size="sm"
+                      className="h-9"
+                      build={async () => saleDocument(await fetchSale(r.id), store, { copy: true })}
+                      onPrint={() => void reprint(r)}
+                    />
                     <Button
                       variant="outline"
                       size="sm"

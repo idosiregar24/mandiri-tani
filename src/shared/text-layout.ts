@@ -1,6 +1,21 @@
 // Fixed-width text layout for printed documents (receipts, faktur). Pure — used by the
 // document builders in src/shared and by the printer encoders in the main process.
 
+/**
+ * PC437 has no accented letters we need: strip diacritics, replace the rest with '?'.
+ * The encoders print this; the print preview shows it, so both look the same.
+ */
+export function toPrinterText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[^\x20-\x7e]/g, '?');
+}
+
 /** Word-wraps to `width` columns (long words are hard-split). Narrow receipts need it. */
 export function wrap(text: string, width: number): string[] {
   const lines: string[] = [];

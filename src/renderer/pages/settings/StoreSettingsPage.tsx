@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
+import { LogoSettingsCard } from '@/features/settings/LogoSettingsCard';
 import { useUpdater } from '@/hooks/useUpdater';
 import type { BackupItem, BackupKind, SystemDiagnostics } from '@shared/schemas/backups';
 import type { PosSettings, StoreSettings } from '@shared/schemas/settings';
@@ -357,6 +358,8 @@ export function StoreSettingsPage() {
           </div>
         </form>
       )}
+
+      {tab === 'profile' && <LogoSettingsCard store={{ name, address, phone }} />}
 
       {tab === 'pos' && (
         <form

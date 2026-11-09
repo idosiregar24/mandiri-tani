@@ -4,20 +4,21 @@ import { CheckCircle2, Loader2, PackageOpen, Printer, RotateCcw } from 'lucide-r
 import { useEffect, useRef, useState } from 'react';
 import { dec } from '@shared/money';
 import type { PrintResult } from '@shared/printing';
+import type { ReceiptStore } from '@shared/receipts';
 import type { Sale } from '@shared/schemas/sales';
-import type { StoreSettings } from '@shared/schemas/settings';
 import { Notice } from '@/components/shared/Notice';
+import { PrintPreviewButton } from '@/components/shared/PrintPreviewButton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatRupiah } from '@/lib/format';
 import { focusScan } from './focus';
-import { printSale } from './print';
+import { printSale, saleDocument } from './print';
 
 export type PrintState = { state: 'printing' } | { state: 'done'; result: PrintResult };
 
 export function usePrintSale() {
   const [status, setStatus] = useState<PrintState | null>(null);
-  const run = async (sale: Sale, store: StoreSettings, copy = false) => {
+  const run = async (sale: Sale, store: ReceiptStore, copy = false) => {
     setStatus({ state: 'printing' });
     setStatus({ state: 'done', result: await printSale(sale, store, { copy }) });
   };
@@ -50,7 +51,7 @@ export function PrintStatus({ status, onRetry }: { status: PrintState | null; on
   );
 }
 
-export function SaleDoneDialog({ sale, store, onNext }: { sale: Sale; store: StoreSettings; onNext: () => void }) {
+export function SaleDoneDialog({ sale, store, onNext }: { sale: Sale; store: ReceiptStore; onNext: () => void }) {
   const print = usePrintSale();
   const started = useRef(false);
   useEffect(() => {
@@ -102,6 +103,11 @@ export function SaleDoneDialog({ sale, store, onNext }: { sale: Sale; store: Sto
         )}
         <PrintStatus status={print.status} onRetry={() => void print.run(sale, store)} />
         <div className="flex justify-end gap-2 pt-2">
+          <PrintPreviewButton
+            className="h-11"
+            build={() => saleDocument(sale, store)}
+            onPrint={() => void print.run(sale, store)}
+          />
           <Button variant="outline" className="h-11" onClick={() => void print.run(sale, store)}>
             <Printer /> Cetak lagi
           </Button>
