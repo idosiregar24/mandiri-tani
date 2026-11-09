@@ -18,7 +18,10 @@ export function arApRoutes({ pool }: { pool: Pool }): Router {
     res.json({ data: rows, meta: { ...meta, totals } });
   });
   router.get('/receivables', ar, async (req, res) => {
-    res.json({ data: await arAp.openDocs(pool, 'AR', parseId(req.query.customerId, 'Pelanggan')) });
+    res.json({ data: await arAp.openDocs(pool, 'AR', parseId(req.query.customerId, 'Pelanggan'), req.query.status) });
+  });
+  router.get('/receivables/:id/history', ar, async (req, res) => {
+    res.json({ data: await arAp.docHistory(pool, 'AR', parseId(req.params.id, 'Piutang')) });
   });
   router.post('/receivables/opening', requirePermission('customers.write'), async (req, res) => {
     res.status(201).json({ data: await arAp.addOpening(pool, req.ctx, 'AR', req.body) });
@@ -38,7 +41,10 @@ export function arApRoutes({ pool }: { pool: Pool }): Router {
     res.json({ data: rows, meta: { ...meta, totals } });
   });
   router.get('/payables', ap, async (req, res) => {
-    res.json({ data: await arAp.openDocs(pool, 'AP', parseId(req.query.supplierId, 'Supplier')) });
+    res.json({ data: await arAp.openDocs(pool, 'AP', parseId(req.query.supplierId, 'Supplier'), req.query.status) });
+  });
+  router.get('/payables/:id/history', ap, async (req, res) => {
+    res.json({ data: await arAp.docHistory(pool, 'AP', parseId(req.params.id, 'Hutang')) });
   });
   router.post('/payables/opening', requirePermission('purchases.write'), async (req, res) => {
     res.status(201).json({ data: await arAp.addOpening(pool, req.ctx, 'AP', req.body) });

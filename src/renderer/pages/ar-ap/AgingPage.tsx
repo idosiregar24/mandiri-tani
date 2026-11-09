@@ -1,9 +1,10 @@
 // Piutang / Hutang (sprint-9 B1/B2): open balance per customer or supplier with aging buckets
-// (FR-ARAP-05), due filters (FR-ARAP-04), a party's open notes + payments, and opening balances.
+// (FR-ARAP-05), due filters (FR-ARAP-04), a party's open notes + payments, its credit card with
+// paid-off notes and each note's instalments (FR-ARAP-07), and opening balances.
 import type { ColumnDef } from '@tanstack/react-table';
-import { AlarmClock, CalendarClock, Loader2, Plus, Search, Wallet } from 'lucide-react';
+import { AlarmClock, CalendarClock, ChevronRight, Loader2, Plus, Search, Wallet } from 'lucide-react';
 import { useState } from 'react';
-import type { AgingRow, DueFilter } from '@shared/schemas/ar-ap';
+import type { AgingRow, DocStatusFilter, DueFilter, OpenDoc } from '@shared/schemas/ar-ap';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MoneyInput } from '@/components/shared/MoneyInput';
@@ -16,7 +17,15 @@ import { StatusPill } from '@/components/shared/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { SIDE, type Side, useAddOpening, useAging, useOpenDocs, usePartyPayments } from '@/features/ar-ap/api';
+import {
+  SIDE,
+  type Side,
+  useAddOpening,
+  useAging,
+  useDocHistory,
+  useOpenDocs,
+  usePartyPayments,
+} from '@/features/ar-ap/api';
 import { PartyPaymentDialog } from '@/features/ar-ap/PartyPaymentDialog';
 import { usePartners } from '@/features/partners/api';
 import { todayJakarta } from '@/features/pos/api';
@@ -188,9 +197,18 @@ export function AgingPage({ side }: { side: Side }) {
   );
 }
 
+const DOC_FILTERS = [
+  { value: 'open', label: 'Belum lunas' },
+  { value: 'all', label: 'Semua nota kredit' },
+] as const;
+
+const dayFormat = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium' });
+
 function PartyDetail({ side, row, onClose }: { side: Side; row: AgingRow; onClose: () => void }) {
   const words = SIDE[side];
-  const docs = useOpenDocs(side, row.partyId);
+  const [status, setStatus] = useState<DocStatusFilter>('open');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const docs = useOpenDocs(side, row.partyId, status);
   const payments = usePartyPayments(side, row.partyId);
   const [paying, setPaying] = useState(false);
   if (paying) {
@@ -198,39 +216,51 @@ function PartyDetail({ side, row, onClose }: { side: Side; row: AgingRow; onClos
       <PartyPaymentDialog side={side} party={{ id: row.partyId, name: row.name }} onClose={() => setPaying(false)} />
     );
   }
+  const list = docs.data ?? [];
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-xl">{row.name}</DialogTitle>
-          <DialogDescription className="text-base">{words.open} belum lunas dan pembayaran terakhir.</DialogDescription>
+          <DialogDescription className="text-base">
+            {status === 'open'
+              ? `${words.open} belum lunas dan pembayaran terakhir. Klik nota untuk melihat cicilannya.`
+              : 'Semua nota kredit, termasuk yang sudah lunas. Klik nota untuk melihat cicilannya.'}
+          </DialogDescription>
         </DialogHeader>
-        <div className="max-h-[40vh] overflow-y-auto rounded-lg border">
+        <SegmentedControl
+          label="Tampilkan nota"
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            setExpanded(null);
+          }}
+          options={DOC_FILTERS}
+        />
+        <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
           {docs.isPending ? (
             <p className="text-muted-foreground flex items-center gap-2 p-4">
               <Loader2 className="size-4 animate-spin" /> Memuat…
             </p>
-          ) : (docs.data ?? []).length === 0 ? (
-            <p className="text-muted-foreground p-4">Semua nota sudah lunas.</p>
+          ) : list.length === 0 ? (
+            <p className="text-muted-foreground p-4">
+              {status === 'open' ? 'Semua nota sudah lunas.' : 'Belum ada nota kredit.'}
+            </p>
           ) : (
             <ul>
-              {docs.data!.map((d) => (
-                <li key={d.id} className="flex min-h-12 items-center gap-3 border-b px-4 py-2 last:border-b-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono font-medium">{d.docNumber}</p>
-                    <p className="text-muted-foreground text-sm">
-                      {date(d.docDate)} · jatuh tempo {date(d.dueDate)}
-                      {d.sourceType === 'OPENING' && ' · saldo awal'}
-                    </p>
-                  </div>
-                  {d.daysOverdue > 0 && <StatusPill tone="error">lewat {d.daysOverdue} hari</StatusPill>}
-                  <span className="w-36 text-right font-semibold tabular-nums">{formatRupiah(d.open)}</span>
-                </li>
+              {list.map((d) => (
+                <DocRow
+                  key={d.id}
+                  side={side}
+                  doc={d}
+                  open={expanded === d.id}
+                  onToggle={() => setExpanded(expanded === d.id ? null : d.id)}
+                />
               ))}
             </ul>
           )}
         </div>
-        {(payments.data ?? []).length > 0 && (
+        {status === 'open' && (payments.data ?? []).length > 0 && (
           <div className="space-y-2">
             <p className="font-semibold">Pembayaran terakhir</p>
             <ul className="rounded-lg border">
@@ -238,10 +268,7 @@ function PartyDetail({ side, row, onClose }: { side: Side; row: AgingRow; onClos
                 <li key={p.id} className="flex items-center justify-between border-b px-4 py-2 last:border-b-0">
                   <span className="font-mono">{p.number}</span>
                   <span className="text-muted-foreground text-sm">
-                    {new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium' }).format(
-                      new Date(p.paidAt),
-                    )}{' '}
-                    · {p.methodName} · {p.docCount} nota
+                    {dayFormat.format(new Date(p.paidAt))} · {p.methodName} · {p.docCount} nota
                   </span>
                   <span className="tabular-nums">{formatRupiah(p.amount)}</span>
                 </li>
@@ -253,12 +280,100 @@ function PartyDetail({ side, row, onClose }: { side: Side; row: AgingRow; onClos
           <Button variant="outline" className="h-11" onClick={onClose}>
             Tutup
           </Button>
-          <Button className="h-11 px-5" disabled={(docs.data ?? []).length === 0} onClick={() => setPaying(true)}>
+          <Button className="h-11 px-5" disabled={row.docCount === 0} onClick={() => setPaying(true)}>
             <Wallet /> {words.pay}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** One credit note: number, due, what is left; opened = the note's story and its instalments. */
+function DocRow({ side, doc: d, open, onToggle }: { side: Side; doc: OpenDoc; open: boolean; onToggle: () => void }) {
+  const paidOff = d.status === 'PAID';
+  return (
+    <li className="border-b last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="hover:bg-surface-muted flex min-h-12 w-full items-center gap-3 px-4 py-2 text-left"
+      >
+        <ChevronRight className={cn('text-muted-foreground size-4 shrink-0', open && 'rotate-90')} />
+        <div className="min-w-0 flex-1">
+          <p className="font-mono font-medium">{d.docNumber}</p>
+          <p className="text-muted-foreground text-sm">
+            {date(d.docDate)} · jatuh tempo {date(d.dueDate)}
+            {d.sourceType === 'OPENING' && ' · saldo awal'}
+          </p>
+        </div>
+        {paidOff ? (
+          <StatusPill tone="success">Lunas</StatusPill>
+        ) : (
+          d.daysOverdue > 0 && <StatusPill tone="error">lewat {d.daysOverdue} hari</StatusPill>
+        )}
+        <span className={cn('w-36 text-right font-semibold tabular-nums', paidOff && 'text-muted-foreground')}>
+          {formatRupiah(d.open)}
+        </span>
+      </button>
+      {open && <DocStory side={side} doc={d} />}
+    </li>
+  );
+}
+
+/** Total → DP → credit → paid → left, then every instalment with what was left after it. */
+function DocStory({ side, doc: d }: { side: Side; doc: OpenDoc }) {
+  const history = useDocHistory(side, d.id);
+  const steps: { label: string; value: string | null; tone?: string }[] = [
+    { label: 'Total nota', value: d.saleTotal },
+    { label: 'DP / dibayar di awal', value: d.downPayment },
+    { label: 'Jadi piutang', value: d.amount },
+    { label: 'Sudah dicicil', value: d.paidAmount },
+    { label: 'Sisa', value: d.open, tone: d.status === 'PAID' ? undefined : 'text-error-ink' },
+  ];
+  return (
+    <div className="bg-surface-muted space-y-3 border-t px-4 py-3">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {steps
+          .filter((x) => x.value !== null)
+          .map((x) => (
+            <div key={x.label} className="bg-background rounded-md border px-3 py-2">
+              <dt className="text-muted-foreground text-sm">{x.label}</dt>
+              <dd className={cn('font-semibold whitespace-nowrap tabular-nums', x.tone)}>{formatRupiah(x.value!)}</dd>
+            </div>
+          ))}
+      </dl>
+      {d.saleTotal === null && (
+        <p className="text-muted-foreground text-sm">Saldo awal — nilai nota dan DP tidak tercatat di aplikasi.</p>
+      )}
+      {history.isPending ? (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin" /> Memuat cicilan…
+        </p>
+      ) : (history.data ?? []).length === 0 ? (
+        <p className="text-muted-foreground text-sm">Belum ada cicilan.</p>
+      ) : (
+        <ul className="bg-background rounded-md border">
+          {history.data!.map((h) => (
+            <li key={h.id} className="flex flex-wrap items-center gap-x-3 border-b px-3 py-2 text-sm last:border-b-0">
+              <span className="w-28 shrink-0">{dayFormat.format(new Date(h.at))}</span>
+              <span className="min-w-0 flex-1 font-mono">
+                {h.number}
+                <span className="text-muted-foreground font-sans">
+                  {' · '}
+                  {h.kind === 'RETURN' ? 'potong retur' : (h.methodName ?? 'bayar')}
+                </span>
+              </span>
+              <span className="w-32 text-right font-medium tabular-nums">{formatRupiah(h.amount)}</span>
+              <span className="text-muted-foreground w-36 text-right tabular-nums">
+                sisa {formatRupiah(h.remaining)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

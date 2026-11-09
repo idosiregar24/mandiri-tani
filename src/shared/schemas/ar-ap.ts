@@ -66,6 +66,31 @@ export interface OpenDoc {
   open: string;
   /** > 0 = late by that many days, 0 = due today, < 0 = not yet due. */
   daysOverdue: number;
+  status: 'OPEN' | 'PARTIAL' | 'PAID' | 'WRITTEN_OFF' | 'VOIDED';
+  /** Receivables of a sale (incl. iPOS notes linked by the import): the note and its DP. */
+  saleId: string | null;
+  saleTotal: string | null;
+  /** Paid at the counter when the note was made (DP / uang muka). */
+  downPayment: string | null;
+}
+
+/** "Belum lunas · Semua" on a party's card (FR-ARAP-07 kartu piutang). */
+export const DOC_STATUS_FILTERS = ['open', 'all'] as const;
+export type DocStatusFilter = (typeof DOC_STATUS_FILTERS)[number];
+export const DocStatusQuery = z.enum(DOC_STATUS_FILTERS).default('open');
+
+/** What reduced one receivable/payable, oldest first: instalments and return deductions. */
+export interface DocHistoryEntry {
+  id: string;
+  kind: 'PAYMENT' | 'RETURN';
+  /** receivable/payable payment id, or the return's id. */
+  sourceId: string;
+  number: string;
+  at: string;
+  methodName: string | null;
+  amount: string;
+  /** Left on the document right after this entry. */
+  remaining: string;
 }
 
 const paymentFields = {

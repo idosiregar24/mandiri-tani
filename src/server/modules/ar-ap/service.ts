@@ -5,11 +5,13 @@ import { allocateOldestFirst } from '@shared/ar-ap';
 import { dec, Decimal, toMoney } from '@shared/money';
 import {
   AgingQuery,
+  DocStatusQuery,
   OpeningPayableInput,
   OpeningReceivableInput,
   PayablePaymentInput,
   ReceivablePaymentInput,
   type AgingPage,
+  type DocHistoryEntry,
   type OpenDoc,
   type PartyPayment,
 } from '@shared/schemas/ar-ap';
@@ -68,9 +70,16 @@ export async function aging(
   return { ...r, page: query.page, pageSize: query.pageSize };
 }
 
-export async function openDocs(pool: Pool, side: Side, partyId: string): Promise<OpenDoc[]> {
+/** `status=all` = the party's whole credit card: paid-off notes too (FR-ARAP-07). */
+export async function openDocs(pool: Pool, side: Side, partyId: string, rawStatus?: unknown): Promise<OpenDoc[]> {
+  const status = DocStatusQuery.parse(rawStatus);
   if (!(await repo.party(pool, side, partyId))) throw notFoundError(WORDS[side].party);
-  return repo.openDocs(pool, side, partyId, today());
+  return repo.openDocs(pool, side, partyId, today(), status);
+}
+
+export async function docHistory(pool: Pool, side: Side, docId: string): Promise<DocHistoryEntry[]> {
+  if (!(await repo.doc(pool, side, docId, today()))) throw notFoundError(side === 'AR' ? 'Piutang' : 'Hutang');
+  return repo.docHistory(pool, side, docId);
 }
 
 export async function listPayments(pool: Pool, side: Side, partyId: string) {

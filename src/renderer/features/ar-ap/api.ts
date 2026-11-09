@@ -3,6 +3,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type {
   AgingRow,
   AgingTotals,
+  DocHistoryEntry,
+  DocStatusFilter,
   DueFilter,
   OpenDoc,
   OpeningPayableInput,
@@ -37,7 +39,9 @@ export const SIDE = {
 export const arApKeys = {
   all: (side: Side) => ['ar-ap', side] as const,
   aging: (side: Side, p: object) => ['ar-ap', side, 'aging', p] as const,
-  docs: (side: Side, partyId: string) => ['ar-ap', side, 'docs', partyId] as const,
+  docs: (side: Side, partyId: string, status: DocStatusFilter = 'open') =>
+    ['ar-ap', side, 'docs', partyId, status] as const,
+  history: (side: Side, docId: string) => ['ar-ap', side, 'history', docId] as const,
   payments: (side: Side, partyId: string) => ['ar-ap', side, 'payments', partyId] as const,
 };
 
@@ -55,11 +59,24 @@ export function useAging(side: Side, params: { q?: string; due: DueFilter; page:
   });
 }
 
-export function useOpenDocs(side: Side, partyId: string | null) {
+/** Open notes (to pay), or with `status: 'all'` the party's whole credit card incl. paid-off notes. */
+export function useOpenDocs(side: Side, partyId: string | null, status: DocStatusFilter = 'open') {
   return useQuery({
-    queryKey: arApKeys.docs(side, partyId ?? ''),
-    queryFn: () => apiGet<OpenDoc[]>(`${SIDE[side].docs}${toQuery({ [SIDE[side].partyParam]: partyId })}`),
+    queryKey: arApKeys.docs(side, partyId ?? '', status),
+    queryFn: () =>
+      apiGet<OpenDoc[]>(
+        `${SIDE[side].docs}${toQuery({ [SIDE[side].partyParam]: partyId, status: status === 'open' ? undefined : status })}`,
+      ),
     enabled: !!partyId,
+  });
+}
+
+/** Instalments and return deductions of one note, oldest first (kartu piutang). */
+export function useDocHistory(side: Side, docId: string | null) {
+  return useQuery({
+    queryKey: arApKeys.history(side, docId ?? ''),
+    queryFn: () => apiGet<DocHistoryEntry[]>(`${SIDE[side].docs}/${docId}/history`),
+    enabled: !!docId,
   });
 }
 

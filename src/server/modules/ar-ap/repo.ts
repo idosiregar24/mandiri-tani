@@ -1,6 +1,14 @@
 // SQL for receivables/payables, their payments (BP/BH) and allocations (schema section 6).
 // Both sides share the queries; table and column names come only from the SIDES whitelist.
-import type { AgingPage, AgingQuery, OpenDoc, PartyPayment, PaymentListItem } from '@shared/schemas/ar-ap';
+import type {
+  AgingPage,
+  AgingQuery,
+  DocHistoryEntry,
+  DocStatusFilter,
+  OpenDoc,
+  PartyPayment,
+  PaymentListItem,
+} from '@shared/schemas/ar-ap';
 import type { z } from '@shared/schemas/common';
 import type { Queryable } from '../../db/pool';
 import { likePattern } from '../../lib/http';
@@ -83,19 +91,59 @@ export async function aging(
   };
 }
 
+// The note behind a receivable (total, DP) as scalar subqueries, not a join: lockOpenDocs() adds
+// FOR UPDATE, which must lock only the documents.
+const NOTE_FIELDS = {
+  AR: `(SELECT s.id FROM sales s WHERE r.source_type = 'SALE' AND s.id = r.source_id) AS "saleId",
+       (SELECT s.total::text FROM sales s WHERE r.source_type = 'SALE' AND s.id = r.source_id) AS "saleTotal",
+       (SELECT s.paid_amount::text FROM sales s WHERE r.source_type = 'SALE' AND s.id = r.source_id) AS "downPayment"`,
+  AP: `NULL::uuid AS "saleId", NULL::text AS "saleTotal", NULL::text AS "downPayment"`,
+};
+
 const DOC_SELECT = (side: Side) => `
   SELECT r.id, r.source_type AS "sourceType", r.doc_number AS "docNumber", r.doc_date::text AS "docDate",
          r.due_date::text AS "dueDate", r.amount::text, r.paid_amount::text AS "paidAmount",
-         (r.amount - r.paid_amount)::text AS open, ($2::date - r.due_date)::int AS "daysOverdue"
+         (r.amount - r.paid_amount)::text AS open, ($2::date - r.due_date)::int AS "daysOverdue", r.status,
+         ${NOTE_FIELDS[side]}
   FROM ${SIDES[side].docs} r`;
 
-export async function openDocs(db: Queryable, side: Side, partyId: string, today: string): Promise<OpenDoc[]> {
+/** Open documents (due first, for paying), or every credit note of the party (newest first). */
+export async function openDocs(
+  db: Queryable,
+  side: Side,
+  partyId: string,
+  today: string,
+  status: DocStatusFilter = 'open',
+): Promise<OpenDoc[]> {
   const r = await db.query<OpenDoc>(
-    `${DOC_SELECT(side)} WHERE r.${SIDES[side].partyCol} = $1 AND r.status IN ('OPEN','PARTIAL')
-     ORDER BY r.due_date, r.doc_date, r.doc_number`,
+    status === 'open'
+      ? `${DOC_SELECT(side)} WHERE r.${SIDES[side].partyCol} = $1 AND r.status IN ('OPEN','PARTIAL')
+         ORDER BY r.due_date, r.doc_date, r.doc_number`
+      : `${DOC_SELECT(side)} WHERE r.${SIDES[side].partyCol} = $1 AND r.status <> 'VOIDED'
+         ORDER BY r.doc_date DESC, r.doc_number DESC LIMIT 500`,
     [partyId, today],
   );
   return r.rows;
+}
+
+const RETURNS = { AR: 'sale_returns', AP: 'purchase_returns' } as const;
+
+/** FR-ARAP-07: what paid one document off, in allocation order, with what was left after each. */
+export async function docHistory(db: Queryable, side: Side, docId: string): Promise<DocHistoryEntry[]> {
+  const s = SIDES[side];
+  const r = await db.query<DocHistoryEntry & { at: Date }>(
+    `SELECT a.id, CASE WHEN a.${s.allocPayment} IS NOT NULL THEN 'PAYMENT' ELSE 'RETURN' END AS kind,
+            coalesce(p.id, x.id) AS "sourceId", coalesce(p.number, x.number) AS number,
+            coalesce(p.paid_at, x.trx_at) AS at, m.name AS "methodName", a.amount::text,
+            (d.amount - sum(a.amount) OVER (ORDER BY a.id))::numeric(18,2)::text AS remaining
+     FROM ${s.allocs} a JOIN ${s.docs} d ON d.id = a.${s.allocDoc}
+     LEFT JOIN ${s.payments} p ON p.id = a.${s.allocPayment}
+     LEFT JOIN payment_methods m ON m.id = p.payment_method_id
+     LEFT JOIN ${RETURNS[side]} x ON x.id = a.${s.allocReturn}
+     WHERE a.${s.allocDoc} = $1 ORDER BY a.id`,
+    [docId],
+  );
+  return r.rows.map((e) => ({ ...e, at: new Date(e.at).toISOString() }));
 }
 
 /** Locks the party's open documents in id order (the same order every writer uses). */
@@ -184,10 +232,10 @@ export async function insertPayment(
 
 export async function getPayment(db: Queryable, side: Side, id: string): Promise<PartyPayment | null> {
   const s = SIDES[side];
-  const head = await db.query<Omit<PartyPayment, 'allocations' | 'openAfter'> & { createdAt: Date }>(
+  const head = await db.query<Omit<PartyPayment, 'allocations' | 'openAfter'>>(
     `SELECT p.id, p.number, p.paid_at AS "paidAt", json_build_object('id', c.id, 'code', c.code, 'name', c.name) AS party,
             json_build_object('id', m.id, 'name', m.name, 'kind', m.kind) AS method, p.amount::text, p.reference, p.note,
-            u.full_name AS "createdBy", p.created_at AS "createdAt"
+            u.full_name AS "createdBy"
      FROM ${s.payments} p JOIN ${s.party} c ON c.id = p.${s.partyCol}
      JOIN payment_methods m ON m.id = p.payment_method_id JOIN users u ON u.id = p.created_by
      WHERE p.id = $1`,
@@ -205,18 +253,25 @@ export async function getPayment(db: Queryable, side: Side, id: string): Promise
      WHERE a.${s.allocPayment} = $1 ORDER BY r.due_date, r.doc_date, r.doc_number`,
     [id],
   );
+  // Documents that existed then: created before it and dated on/before its day — iPOS documents
+  // are all created by one import — or already paid by it or an earlier payment (backdated notes).
   const after = await db.query<{ open: string }>(
-    `SELECT (coalesce((SELECT sum(r.amount) FROM ${s.docs} r
-                       WHERE r.${s.partyCol} = $1 AND r.status <> 'VOIDED' AND r.created_at <= $2), 0)
-           - coalesce((SELECT sum(x.amount) FROM ${s.allocs} x JOIN ${s.docs} r ON r.id = x.${s.allocDoc}
-                       WHERE r.${s.partyCol} = $1 AND r.status <> 'VOIDED' AND r.created_at <= $2
-                         AND x.id <= (SELECT id FROM ${s.allocs} WHERE ${s.allocPayment} = $3 ORDER BY id DESC LIMIT 1)), 0)
+    `WITH last AS (SELECT id FROM ${s.allocs} WHERE ${s.allocPayment} = $3 ORDER BY id DESC LIMIT 1),
+     docs AS (
+       SELECT r.id, r.amount FROM ${s.docs} r
+       WHERE r.${s.partyCol} = $1 AND r.status <> 'VOIDED'
+         -- compared in SQL: a JS Date drops the microseconds of rows from the same transaction
+         AND r.created_at <= (SELECT created_at FROM ${s.payments} WHERE id = $3)
+         AND (r.doc_date <= (($2::timestamptz) AT TIME ZONE 'Asia/Jakarta')::date
+              OR EXISTS (SELECT 1 FROM ${s.allocs} y WHERE y.${s.allocDoc} = r.id AND y.id <= (SELECT id FROM last))))
+     SELECT (coalesce((SELECT sum(amount) FROM docs), 0)
+           - coalesce((SELECT sum(x.amount) FROM ${s.allocs} x JOIN docs r ON r.id = x.${s.allocDoc}
+                       WHERE x.id <= (SELECT id FROM last)), 0)
            )::numeric(18,2)::text AS open`,
-    [h.party.id, h.createdAt, id],
+    [h.party.id, h.paidAt, id],
   );
-  const { createdAt: _c, ...rest } = h;
   return {
-    ...rest,
+    ...h,
     paidAt: new Date(h.paidAt).toISOString(),
     allocations: allocs.rows,
     openAfter: after.rows[0]!.open,

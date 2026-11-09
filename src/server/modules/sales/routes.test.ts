@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { DocHistoryEntry, OpenDoc, PartyPayment } from '@shared/schemas/ar-ap';
 import type { AuthorizationGrantResult } from '@shared/schemas/auth';
 import type { CashAccount, Customer, PaymentMethod, Product, Unit } from '@shared/schemas/master';
 import type { Sale, SaleListItem } from '@shared/schemas/sales';
@@ -80,6 +81,14 @@ afterAll(async () => {
   setClock();
   await api?.close();
 });
+
+/** The receivable a credit sale created. */
+const recId = async (saleId: string) =>
+  (
+    await api.pool.query<{ id: string }>(`SELECT id FROM receivables WHERE source_type = 'SALE' AND source_id = $1`, [
+      saleId,
+    ])
+  ).rows[0]!.id;
 
 const sell = (body: unknown, as: 'KASIR' | 'OWNER' = 'KASIR', headers: Record<string, string> = {}) =>
   api.call<Data<Sale> & ErrBody>('POST', '/sales', body, { as, headers });
@@ -260,6 +269,46 @@ describe('POST /sales — FAKTUR (JL)', () => {
       r.body.data.id,
     ]);
     expect(rec.rows).toEqual([{ amount: '200000.00', status: 'OPEN' }]);
+
+    // Kartu piutang: the note's total and DP next to the credit, then each instalment (FR-ARAP-07).
+    const pay = await api.call<Data<PartyPayment>>(
+      'POST',
+      '/receivable-payments',
+      {
+        customerId: customer.id,
+        paymentMethodId: cash,
+        amount: '50000',
+        allocations: [{ documentId: await recId(r.body.data.id), amount: '50000' }],
+      },
+      { as: 'KASIR', headers: { 'Idempotency-Key': randomUUID() } },
+    );
+    expect(pay.status).toBe(201);
+    const card = await api.call<Data<OpenDoc[]>>(
+      'GET',
+      `/receivables?customerId=${customer.id}&status=all`,
+      undefined,
+      { as: 'KASIR' },
+    );
+    expect(card.body.data.find((d) => d.saleId === r.body.data.id)).toMatchObject({
+      sourceType: 'SALE',
+      saleTotal: '290000.00',
+      downPayment: '90000.00',
+      amount: '200000.00',
+      paidAmount: '50000.00',
+      open: '150000.00',
+      status: 'PARTIAL',
+    });
+    const history = await api.call<Data<DocHistoryEntry[]>>(
+      'GET',
+      `/receivables/${await recId(r.body.data.id)}/history`,
+      undefined,
+      { as: 'KASIR' },
+    );
+    expect(history.body.data.map((h) => [h.kind, h.number, h.amount, h.remaining])).toEqual([
+      ['PAYMENT', pay.body.data.number, '50000.00', '150000.00'],
+    ]);
+    // Supplier side stays Owner-only (ap.payment).
+    expect((await api.call('GET', `/payables/${randomUUID()}/history`, undefined, { as: 'KASIR' })).status).toBe(403);
   });
 
   it('over the credit limit needs the Owner PIN', async () => {
