@@ -91,7 +91,8 @@ export function SaleDoneDialog({ sale, store, onNext }: { sale: Sale; store: Rec
         </div>
         {credit && (
           <Notice tone="info">
-            Piutang {formatRupiah(sale.creditAmount)}, jatuh tempo {sale.dueDate?.split('-').reverse().join('/')}.
+            {dec(sale.paidAmount).gt(0) ? `DP ${formatRupiah(sale.paidAmount)} diterima. Sisa ` : 'Seluruhnya '}
+            {formatRupiah(sale.creditAmount)} jadi piutang, jatuh tempo {sale.dueDate?.split('-').reverse().join('/')}.
           </Notice>
         )}
         {sale.fulfillmentStatus === 'PENDING' && (

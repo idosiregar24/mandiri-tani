@@ -49,6 +49,8 @@ interface PosState {
   otherChargesNote: string | null;
   /** D-5: goods stay in the warehouse until a pickup note. */
   pickupLater: boolean;
+  /** Kredit chosen on purpose in the payment dialog (Alt+K): what is not paid now (DP) is owed. */
+  onCredit: boolean;
   addProduct: (product: PosProduct, unitId?: string, qty?: string) => string;
   setQty: (key: string, qty: string) => void;
   changeUnit: (key: string, unitId: string) => void;
@@ -61,6 +63,7 @@ interface PosState {
   setChannel: (channel: SaleChannel) => void;
   setOtherCharges: (amount: string, note: string | null) => void;
   setPickupLater: (on: boolean) => void;
+  setOnCredit: (on: boolean) => void;
   /** F7: a held note back into the (empty) cart. */
   loadRecalled: (r: RecalledSale) => void;
   clear: () => void;
@@ -94,6 +97,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
   otherCharges: '0',
   otherChargesNote: null,
   pickupLater: false,
+  onCredit: false,
 
   addProduct: (product, unitId, qty = '1') => {
     const unit = unitId ?? defaultUnit(product).id;
@@ -167,9 +171,16 @@ export const usePosStore = create<PosState>()((set, get) => ({
 
   setTotalTarget: (totalTarget) => set({ totalTarget }),
 
-  setChannel: (channel) => set((s) => ({ channel, otherCharges: channel === 'KASIR' ? '0' : s.otherCharges })),
+  // A Kasir note is never on credit (as in iPOS): back to Kasir drops the credit choice.
+  setChannel: (channel) =>
+    set((s) => ({
+      channel,
+      otherCharges: channel === 'KASIR' ? '0' : s.otherCharges,
+      onCredit: channel === 'KASIR' ? false : s.onCredit,
+    })),
   setOtherCharges: (otherCharges, otherChargesNote) => set({ otherCharges, otherChargesNote }),
   setPickupLater: (pickupLater) => set({ pickupLater }),
+  setOnCredit: (onCredit) => set({ onCredit }),
 
   // S7-2: a typed (MANUAL) price stays; list prices are resolved again (the master may have changed).
   loadRecalled: (r) => {
@@ -203,6 +214,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
       otherCharges: r.otherCharges,
       otherChargesNote: r.otherChargesNote,
       pickupLater: false,
+      onCredit: false,
     });
   },
 
@@ -217,6 +229,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
       otherCharges: '0',
       otherChargesNote: null,
       pickupLater: false,
+      onCredit: false,
     }),
 }));
 

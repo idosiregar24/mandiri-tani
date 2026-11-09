@@ -1,7 +1,11 @@
 // F9 Bayar (FR-POS-10/11/14, sprint-6 C1). Keyboard: type the cash handed over (empty + Enter =
 // exact amount, the most common case), Alt+1…9 pick a payment method, Alt+N "diambil nanti", Enter
 // finishes. 423 → Owner PIN → retried automatically with the same Idempotency-Key.
-import { Banknote, Check, Landmark, Loader2, PackageOpen, Plus, QrCode, UserRound, X } from 'lucide-react';
+// Credit is never implied by an empty or short amount: the cashier presses "Kredit" (Alt+K) on
+// purpose. Then the amount typed is the DP (may be empty) and the rest becomes the customer's
+// receivable. As in iPOS — no KSR note ever had credit, all 2.187 credit notes were JL — Kredit
+// turns a Kasir sale into a Faktur and asks for the customer if none is chosen yet.
+import { Banknote, Check, HandCoins, Landmark, Loader2, PackageOpen, Plus, QrCode, UserRound, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { dec, Decimal } from '@shared/money';
 import type { Permission } from '@shared/permissions';
@@ -62,6 +66,9 @@ export function PaymentDialog({
   const customer = usePosStore((x) => x.customer);
   const pickupLater = usePosStore((x) => x.pickupLater);
   const setPickupLater = usePosStore((x) => x.setPickupLater);
+  const setChannel = usePosStore((x) => x.setChannel);
+  const onCredit = usePosStore((x) => x.onCredit);
+  const setOnCredit = usePosStore((x) => x.setOnCredit);
   const [rows, setRows] = useState<Row[]>([]);
   const [active, setActive] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +94,8 @@ export function PaymentDialog({
   const short = Decimal.max(0, dec(total).minus(paid));
   const nonCashTooMuch = nonCash.gt(total);
   const named = customer !== null;
-  const canFinish = !busy && !nonCashTooMuch && (channel === 'FAKTUR' ? named : short.isZero());
+  // Short is only allowed when Kredit was chosen; a Faktur always needs a named customer.
+  const canFinish = !busy && !nonCashTooMuch && (channel === 'FAKTUR' ? named : true) && (onCredit || short.isZero());
 
   const update = (i: number, patch: Partial<Row>) =>
     setRows(effectiveRows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -95,6 +103,20 @@ export function PaymentDialog({
   const pickMethod = (m: PaymentMethod) => {
     update(active, { methodId: m.id, reference: m.kind === 'CASH' ? '' : (effectiveRows[active]?.reference ?? '') });
     amountInput.current?.focus();
+  };
+
+  /** Kredit on/off. On: the note becomes a Faktur (JL) for a named customer; the amount is the DP. */
+  const toggleCredit = () => {
+    setError(null);
+    if (onCredit) {
+      setOnCredit(false);
+      amountInput.current?.focus();
+      return;
+    }
+    setChannel('FAKTUR');
+    setOnCredit(true);
+    if (!named) onPickCustomer('pay');
+    else amountInput.current?.focus();
   };
 
   const addRow = () => {
@@ -136,9 +158,10 @@ export function PaymentDialog({
   };
 
   const submit = () => {
-    // Empty cash + Enter on a cashier sale = exact amount (most notes in the store's iPOS data).
+    // Empty + Enter = exact amount (most notes in the store's iPOS data) — unless Kredit is on,
+    // then empty = no DP, everything owed. A Faktur without a customer cannot finish anyway.
     const r = effectiveRows[active];
-    if (r && !r.amount && channel === 'KASIR') {
+    if (r && !r.amount && !onCredit && (channel === 'KASIR' || named)) {
       const filled = effectiveRows.map((x, i) => (i === active ? { ...x, amount: dueForActive } : x));
       setRows(filled);
       void finish(undefined, filled);
@@ -167,6 +190,11 @@ export function PaymentDialog({
               else onPickCustomer('pickup');
               return;
             }
+            if (e.altKey && e.key.toLowerCase() === 'k') {
+              e.preventDefault();
+              if (!busy) toggleCredit();
+              return;
+            }
             if (e.key === 'F8' && !busy) {
               e.preventDefault();
               onPickCustomer('pay');
@@ -180,7 +208,9 @@ export function PaymentDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle className="text-xl">{channel === 'FAKTUR' ? 'Bayar faktur' : 'Bayar'}</DialogTitle>
+            <DialogTitle className="text-xl">
+              {onCredit ? 'Bayar kredit' : channel === 'FAKTUR' ? 'Bayar faktur' : 'Bayar'}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="grid gap-6 md:grid-cols-[1fr_300px]">
@@ -214,7 +244,27 @@ export function PaymentDialog({
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  aria-pressed={onCredit}
+                  onClick={toggleCredit}
+                  disabled={busy}
+                  className={cn(
+                    'flex h-12 items-center gap-2 rounded-lg border px-4 text-base',
+                    onCredit
+                      ? 'border-warning bg-warning/15 text-warning-ink font-semibold shadow-xs'
+                      : 'hover:border-warning border-dashed',
+                  )}
+                >
+                  {onCredit ? <Check className="size-5" /> : <HandCoins className="size-5" />} Kredit
+                  <kbd className={cn('text-xs', onCredit ? 'opacity-80' : 'text-muted-foreground')}>Alt+K</kbd>
+                </button>
               </div>
+              {onCredit && (
+                <p className="text-warning-ink -mt-1 text-sm">
+                  Kredit: uang yang diterima sekarang dicatat sebagai DP, sisanya jadi piutang pelanggan.
+                </p>
+              )}
 
               {effectiveRows.length > 1 && (
                 <ul className="space-y-1">
@@ -249,31 +299,37 @@ export function PaymentDialog({
 
               <label className="block space-y-2">
                 <span className="text-base font-medium">
-                  {rowKind === 'CASH' ? 'Uang diterima' : `Jumlah ${byId.get(row?.methodId ?? '')?.name ?? ''}`}
+                  {onCredit
+                    ? `DP / uang muka${rowKind === 'CASH' ? '' : ` lewat ${byId.get(row?.methodId ?? '')?.name ?? ''}`}`
+                    : rowKind === 'CASH'
+                      ? 'Uang diterima'
+                      : `Jumlah ${byId.get(row?.methodId ?? '')?.name ?? ''}`}
                 </span>
                 <MoneyInput
                   ref={amountInput}
                   autoFocus
                   value={row?.amount ?? ''}
                   onChange={(v) => update(active, { amount: v })}
-                  placeholder={channel === 'KASIR' ? 'kosong + Enter = uang pas' : '0'}
+                  placeholder={onCredit ? 'kosong = tanpa DP' : 'kosong + Enter = uang pas'}
                   className="h-14 pl-12 text-2xl md:text-2xl"
                 />
               </label>
               {rowKind === 'CASH' ? (
-                <div className="flex flex-wrap gap-2">
-                  {quickAmounts(dueForActive).map((v, i) => (
-                    <Button
-                      key={v}
-                      type="button"
-                      variant="outline"
-                      className="h-11 text-base"
-                      onClick={() => update(active, { amount: v })}
-                    >
-                      {i === 0 ? `Uang pas ${formatRupiah(v)}` : formatRupiah(v)}
-                    </Button>
-                  ))}
-                </div>
+                !onCredit && (
+                  <div className="flex flex-wrap gap-2">
+                    {quickAmounts(dueForActive).map((v, i) => (
+                      <Button
+                        key={v}
+                        type="button"
+                        variant="outline"
+                        className="h-11 text-base"
+                        onClick={() => update(active, { amount: v })}
+                      >
+                        {i === 0 ? `Uang pas ${formatRupiah(v)}` : formatRupiah(v)}
+                      </Button>
+                    ))}
+                  </div>
+                )
               ) : (
                 <Input
                   value={row?.reference ?? ''}
@@ -298,12 +354,12 @@ export function PaymentDialog({
                 <p className="text-right text-2xl font-bold whitespace-nowrap tabular-nums">{formatRupiah(total)}</p>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Dibayar</span>
+                <span className="text-muted-foreground">{onCredit ? 'DP' : 'Dibayar'}</span>
                 <span className="tabular-nums">{formatRupiah(paid.toFixed(2))}</span>
               </div>
               {nonCashTooMuch ? (
                 <Notice tone="error">Transfer/QRIS melebihi total. Kembalian hanya dari uang tunai.</Notice>
-              ) : short.gt(0) && channel === 'FAKTUR' ? (
+              ) : short.gt(0) && onCredit ? (
                 <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
                   <p className="text-warning-ink">Sisa jadi piutang</p>
                   <p className="text-right text-xl font-bold whitespace-nowrap tabular-nums">
@@ -312,10 +368,13 @@ export function PaymentDialog({
                   <p className="text-muted-foreground text-sm">Jatuh tempo mengikuti termin pelanggan.</p>
                 </div>
               ) : short.gt(0) ? (
-                <div>
+                <div className="space-y-2">
                   <p className="text-error-ink">Kurang</p>
                   <p className="text-error-ink text-right text-[2rem] leading-tight font-bold whitespace-nowrap tabular-nums">
                     {formatRupiah(short.toFixed(2))}
+                  </p>
+                  <p className="text-muted-foreground text-sm">
+                    Sisanya dibayar nanti? Tekan <strong>Kredit</strong> (Alt+K).
                   </p>
                 </div>
               ) : (
@@ -375,7 +434,10 @@ export function PaymentDialog({
               <Button
                 size="lg"
                 className="h-14 text-lg"
-                disabled={busy || (channel === 'FAKTUR' && !named) || nonCashTooMuch}
+                // Nothing typed = exact amount on Enter; typed but short needs Kredit first.
+                disabled={
+                  busy || (channel === 'FAKTUR' && !named) || nonCashTooMuch || (!onCredit && short.gt(0) && paid.gt(0))
+                }
                 onClick={submit}
               >
                 {busy ? <Loader2 className="animate-spin" /> : <Check className="size-5" />} Selesai
