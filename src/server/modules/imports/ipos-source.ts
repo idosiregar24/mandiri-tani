@@ -347,9 +347,17 @@ const CREDIT_COLUMNS = [
   'krd_jml_pot',
   'byr_krd_jt',
 ];
+// How iPOS keeps a credit sale (backup 2026-10-24, aggregates; verified on every credit note):
+// - tbl_ikhd.jmltunai = paid at the counter (the DP), jmlkredit = what became credit; only JL
+//   notes have credit (KSR never), 485 of 2.187 credit notes had a DP
+// - every instalment is a BP (tbl_byrpiutanghd) split per note in tbl_byrpiutangdt (notrsmasuk,
+//   krd_jml_byr); per note Σ dt.krd_jml_byr = tbl_ikhd.krd_jml_byr, per BP Σ dt = totalbayar
+// - krd_jml_pot = a deduction on the credit (0 in the store's data) → lowers what is owed
 export const AR_AP_FINGERPRINT: Record<string, readonly string[]> = {
   tbl_ikhd: CREDIT_COLUMNS,
   tbl_imhd: CREDIT_COLUMNS,
+  tbl_byrpiutanghd: ['notransaksi', 'tanggal', 'kodesupel', 'totalbayar', 'keterangan'],
+  tbl_byrpiutangdt: ['notransaksi', 'notrsmasuk', 'krd_jml_byr'],
 };
 
 /** A sales note (tbl_ikhd) or purchase invoice (tbl_imhd) with credit left. */
@@ -362,35 +370,91 @@ export interface IposOpenCredit {
   open: string;
 }
 
-export interface IposArApRows {
-  receivables: IposOpenCredit[];
-  payables: IposOpenCredit[];
-  /** Totals counted in iPOS itself, for the reconciliation. */
-  source: { receivables: number; receivablesOpen: string; customers: number; payables: number; payablesOpen: string };
+/** Every iPOS sales note that went (partly) on credit — paid off or not. */
+export interface IposCreditNote extends IposOpenCredit {
+  /** jmlkredit − krd_jml_pot: what the customer owed. */
+  credit: string;
+  /** krd_jml_byr: paid off so far through BP payments. */
+  paid: string;
 }
 
-const openCredit = (table: 'tbl_ikhd' | 'tbl_imhd') => `
+/** One BP payment and how iPOS split it over the notes. */
+export interface IposArPayment {
+  notransaksi: string;
+  /** "2026-01-02T08:00:00" — iPOS local time (WIB). */
+  tanggal: string;
+  kodesupel: string;
+  total: string;
+  keterangan: string | null;
+  allocations: { note: string; amount: string }[];
+}
+
+export interface IposArApRows {
+  credits: IposCreditNote[];
+  payments: IposArPayment[];
+  payables: IposOpenCredit[];
+  /** Totals counted in iPOS itself, for the reconciliation. */
+  source: {
+    receivables: number;
+    receivablesOpen: string;
+    customers: number;
+    creditNotes: number;
+    creditTotal: string;
+    payments: number;
+    paymentsTotal: string;
+    payables: number;
+    payablesOpen: string;
+  };
+}
+
+const OPEN = `(jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0))`;
+const creditDocs = (table: 'tbl_ikhd' | 'tbl_imhd', where: string) => `
   SELECT trim(notransaksi) AS notransaksi, trim(coalesce(kodesupel, '')) AS kodesupel, tanggal::date::text AS tanggal,
-         byr_krd_jt::date::text AS jatuhtempo,
-         round(jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0), 2)::text AS open
-  FROM ${table} WHERE jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) > 0
+         byr_krd_jt::date::text AS jatuhtempo, round(${OPEN}, 2)::text AS open,
+         round(jmlkredit - coalesce(krd_jml_pot, 0), 2)::text AS credit, round(coalesce(krd_jml_byr, 0), 2)::text AS paid
+  FROM ${table} WHERE ${where}
   ORDER BY tanggal, notransaksi`;
 
 export async function loadArApRows(db: Queryable): Promise<IposArApRows> {
-  const [rec, pay, totals] = await Promise.all([
-    db.query<IposOpenCredit>(openCredit('tbl_ikhd')),
-    db.query<IposOpenCredit>(openCredit('tbl_imhd')),
+  const [credits, payments, allocations, payables, totals] = await Promise.all([
+    db.query<IposCreditNote>(creditDocs('tbl_ikhd', 'jmlkredit > 0')),
+    db.query<Omit<IposArPayment, 'allocations'>>(
+      `SELECT trim(notransaksi) AS notransaksi, to_char(tanggal, 'YYYY-MM-DD"T"HH24:MI:SS') AS tanggal,
+              trim(coalesce(kodesupel, '')) AS kodesupel, round(coalesce(totalbayar, 0), 2)::text AS total,
+              nullif(trim(keterangan), '') AS keterangan
+       FROM tbl_byrpiutanghd ORDER BY tanggal, notransaksi`,
+    ),
+    db.query<{ payment: string; note: string; amount: string }>(
+      `SELECT trim(notransaksi) AS payment, trim(notrsmasuk) AS note, round(sum(krd_jml_byr), 2)::text AS amount
+       FROM tbl_byrpiutangdt WHERE krd_jml_byr > 0 GROUP BY 1, 2 ORDER BY 1, 2`,
+    ),
+    db.query<IposOpenCredit>(creditDocs('tbl_imhd', `${OPEN} > 0`)),
     db.query<IposArApRows['source']>(
-      `WITH r AS (SELECT kodesupel, jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) AS open FROM tbl_ikhd),
-            p AS (SELECT jmlkredit - coalesce(krd_jml_byr, 0) - coalesce(krd_jml_pot, 0) AS open FROM tbl_imhd)
+      `WITH r AS (SELECT kodesupel, jmlkredit - coalesce(krd_jml_pot, 0) AS credit, ${OPEN} AS open FROM tbl_ikhd WHERE jmlkredit > 0),
+            p AS (SELECT ${OPEN} AS open FROM tbl_imhd)
        SELECT (SELECT count(*) FROM r WHERE open > 0)::int AS receivables,
               (SELECT round(coalesce(sum(open), 0), 2)::text FROM r WHERE open > 0) AS "receivablesOpen",
               (SELECT count(DISTINCT trim(kodesupel)) FROM r WHERE open > 0)::int AS customers,
+              (SELECT count(*) FROM r)::int AS "creditNotes",
+              (SELECT round(coalesce(sum(credit), 0), 2)::text FROM r) AS "creditTotal",
+              (SELECT count(*) FROM tbl_byrpiutanghd)::int AS payments,
+              (SELECT round(coalesce(sum(totalbayar), 0), 2)::text FROM tbl_byrpiutanghd) AS "paymentsTotal",
               (SELECT count(*) FROM p WHERE open > 0)::int AS payables,
               (SELECT round(coalesce(sum(open), 0), 2)::text FROM p WHERE open > 0) AS "payablesOpen"`,
     ),
   ]);
-  return { receivables: rec.rows, payables: pay.rows, source: totals.rows[0]! };
+  const split = new Map<string, IposArPayment['allocations']>();
+  for (const a of allocations.rows) {
+    const list = split.get(a.payment) ?? [];
+    list.push({ note: a.note, amount: a.amount });
+    split.set(a.payment, list);
+  }
+  return {
+    credits: credits.rows,
+    payments: payments.rows.map((p) => ({ ...p, allocations: split.get(p.notransaksi) ?? [] })),
+    payables: payables.rows,
+    source: totals.rows[0]!,
+  };
 }
 
 // ------------------------------------------------------------------ 2-year history (sprint-10 S10-10)

@@ -1,6 +1,10 @@
-// iPOS importer, OPEN RECEIVABLES & PAYABLES scope (FR-MIG-02 "Piutang", FR-MIG-05, sprint-9 S9-6).
-// Every open iPOS credit note becomes an OPENING receivable with its own number, date and due
-// date (amount = what is still open); supplier debts only for the invoices the Owner ticks.
+// iPOS importer, RECEIVABLES & PAYABLES scope (FR-MIG-02 "Piutang", FR-MIG-03…05, sprint-9 S9-6).
+// Every iPOS credit note — paid off or not — becomes a receivable worth its original credit, and
+// every BP instalment becomes a receivable payment allocated to the same notes as in iPOS, so the
+// app shows the whole story (credit, instalments, what is left) and what is left equals iPOS.
+// Notes are linked to the sale of the history scope (total, DP) whichever scope runs last.
+// Historical BP payments add no cash-book rows (like the history scope: the cash balance today
+// is not rebuilt from 2 years of history). Supplier debts: only the invoices the Owner ticks.
 import { basename } from 'node:path';
 import { dec, Decimal, toMoney } from '@shared/money';
 import {
@@ -17,6 +21,7 @@ import { recordAudit } from '../../lib/audit';
 import { AppError } from '../../lib/errors';
 import type { RequestCtx } from '../../middleware/auth';
 import * as arAp from '../ar-ap/repo';
+import { insertMany } from './history-repo';
 import {
   AR_AP_FINGERPRINT,
   checkFingerprint,
@@ -51,31 +56,150 @@ async function readRows(deps: ImportDeps) {
   });
 }
 
-interface Plan {
-  receivables: { legacyKey: string; customerId: string; docDate: string; dueDate: string; amount: string }[];
+export interface ArApLookups {
+  /** iPOS kodesupel → customer / supplier (master scope's legacy_refs). */
+  customers: Map<string, { id: string; name: string }>;
+  suppliers: Map<string, { id: string; name: string }>;
+  /** Upper-case numbers of receivable payments already made in this app (dev/test documents). */
+  takenPayments: Set<string>;
+}
+
+interface ReceivablePlan {
+  legacyKey: string;
+  customerId: string;
+  docDate: string;
+  dueDate: string;
+  /** The original credit (jmlkredit − deduction), not what is left. */
+  amount: string;
+  /** Σ of the allocations below — paid_amount. */
+  paid: Decimal;
+}
+
+interface PaymentPlan {
+  legacyKey: string;
+  customerId: string;
+  paidAt: string;
+  amount: string;
+  note: string | null;
+  allocations: { legacyKey: string; amount: string }[];
+}
+
+export interface ArApPlan {
+  receivables: ReceivablePlan[];
+  payments: PaymentPlan[];
   payables: (IposArApInspectResult['payables'][number] & { supplierId: string | null })[];
   issues: DataIssue[];
 }
 
+function findings() {
+  const by = new Map<string, DataIssue>();
+  return {
+    add(code: string, title: string, action: string, example: string) {
+      const i = by.get(code) ?? { code, title, action, count: 0, examples: [] };
+      i.count += 1;
+      if (i.examples.length < 5) i.examples.push(example);
+      by.set(code, i);
+    },
+    list: () => [...by.values()],
+  };
+}
+
 /** Pure mapping iPOS rows → documents, with the findings the Owner should see. */
-async function plan(db: Queryable, rows: IposArApRows): Promise<Plan> {
-  const customers = await repo.partyIdsByCode(db, 'customer');
-  const suppliers = await repo.partyIdsByCode(db, 'supplier');
-  const unknownCustomer: string[] = [];
-  const noDue: string[] = [];
-  const receivables: Plan['receivables'] = [];
-  for (const r of rows.receivables) {
-    const c = customers.get(clean(r.kodesupel));
+export function planArAp(rows: IposArApRows, look: ArApLookups): ArApPlan {
+  const f = findings();
+  const receivables: ReceivablePlan[] = [];
+  const byKey = new Map<string, ReceivablePlan>();
+  /** krd_jml_byr per note: what iPOS says was paid, to compare with the instalments found. */
+  const iposPaid = new Map<string, string>();
+  for (const r of rows.credits) {
+    const c = look.customers.get(clean(r.kodesupel));
     if (!c) {
-      unknownCustomer.push(`${r.notransaksi} (${clean(r.kodesupel) || 'tanpa pelanggan'})`);
+      f.add(
+        'AR_UNKNOWN_CUSTOMER',
+        'Nota kredit dengan pelanggan yang tidak ada di data master',
+        'Tidak diimpor. Periksa pelanggannya di iPOS, lalu catat sebagai saldo awal piutang bila masih ditagih.',
+        `${r.notransaksi} (${clean(r.kodesupel) || 'tanpa pelanggan'})`,
+      );
       continue;
     }
-    if (!r.jatuhtempo) noDue.push(r.notransaksi);
-    const dueDate = r.jatuhtempo && r.jatuhtempo >= r.tanggal ? r.jatuhtempo : r.tanggal;
-    receivables.push({ legacyKey: r.notransaksi, customerId: c.id, docDate: r.tanggal, dueDate, amount: r.open });
+    if (dec(r.credit).lte(0)) continue; // fully deducted: nothing was ever owed
+    if (!r.jatuhtempo && dec(r.open).gt(0)) {
+      f.add(
+        'AR_NO_DUE_DATE',
+        'Piutang tanpa tanggal jatuh tempo',
+        'Jatuh tempo diisi sama dengan tanggal nota.',
+        r.notransaksi,
+      );
+    }
+    const doc: ReceivablePlan = {
+      legacyKey: r.notransaksi,
+      customerId: c.id,
+      docDate: r.tanggal,
+      dueDate: r.jatuhtempo && r.jatuhtempo >= r.tanggal ? r.jatuhtempo : r.tanggal,
+      amount: toMoney(r.credit),
+      paid: new Decimal(0),
+    };
+    receivables.push(doc);
+    byKey.set(r.notransaksi, doc);
+    iposPaid.set(r.notransaksi, r.paid);
   }
+
+  // Instalments in date order, so a cap (never more than the note's credit) hits the latest ones.
+  const payments: PaymentPlan[] = [];
+  for (const p of rows.payments) {
+    if (look.takenPayments.has(p.notransaksi.toUpperCase())) {
+      f.add(
+        'AR_PAYMENT_NUMBER_TAKEN',
+        'Nomor pelunasan iPOS sudah dipakai pembayaran di aplikasi ini',
+        'Pelunasan iPOS ini dilewati. Biasanya pembayaran uji coba — jalankan "Reset data persiapan" lalu impor ulang.',
+        p.notransaksi,
+      );
+      continue;
+    }
+    const c = look.customers.get(clean(p.kodesupel));
+    const allocations: PaymentPlan['allocations'] = [];
+    let total = new Decimal(0);
+    for (const a of p.allocations) {
+      const doc = byKey.get(a.note);
+      if (!c || !doc || doc.customerId !== c.id) continue;
+      const room = dec(doc.amount).minus(doc.paid);
+      const take = Decimal.min(room, a.amount);
+      if (take.lte(0)) continue;
+      doc.paid = doc.paid.plus(take);
+      total = total.plus(take);
+      allocations.push({ legacyKey: a.note, amount: toMoney(take) });
+    }
+    if (!total.eq(p.total)) {
+      f.add(
+        'AR_PAYMENT_UNMATCHED',
+        'Pelunasan iPOS yang tidak seluruhnya cocok dengan nota kredit yang diimpor',
+        'Hanya bagian yang cocok yang diimpor (nota lain pelanggan, nota tidak ada, atau melebihi kreditnya).',
+        p.notransaksi,
+      );
+    }
+    if (!c || total.lte(0)) continue;
+    payments.push({
+      legacyKey: p.notransaksi,
+      customerId: c.id,
+      paidAt: `${p.tanggal}+07:00`,
+      amount: toMoney(total),
+      note: p.keterangan,
+      allocations,
+    });
+  }
+  for (const d of receivables) {
+    if (!d.paid.eq(iposPaid.get(d.legacyKey)!)) {
+      f.add(
+        'AR_PAID_MISMATCH',
+        'Nota kredit yang jumlah pelunasannya berbeda dari catatan iPOS',
+        'Sisa piutang dihitung dari pelunasan yang terimpor. Periksa nota ini di iPOS.',
+        d.legacyKey,
+      );
+    }
+  }
+
   const payables = rows.payables.map((p) => {
-    const s = suppliers.get(clean(p.kodesupel));
+    const s = look.suppliers.get(clean(p.kodesupel));
     return {
       legacyKey: p.notransaksi,
       supplierCode: clean(p.kodesupel),
@@ -86,41 +210,27 @@ async function plan(db: Queryable, rows: IposArApRows): Promise<Plan> {
       open: p.open,
     };
   });
-  const issues: DataIssue[] = [];
-  if (unknownCustomer.length) {
-    issues.push({
-      code: 'AR_UNKNOWN_CUSTOMER',
-      title: 'Piutang dengan pelanggan yang tidak ada di data master',
-      action: 'Tidak diimpor. Periksa pelanggannya di iPOS, lalu catat sebagai saldo awal piutang bila masih ditagih.',
-      count: unknownCustomer.length,
-      examples: unknownCustomer.slice(0, 5),
-    });
+  for (const p of payables.filter((x) => !x.supplierId)) {
+    f.add(
+      'AP_UNKNOWN_SUPPLIER',
+      'Faktur kredit dengan supplier yang tidak ada di data master',
+      'Tidak bisa dicentang. Catat sebagai hutang manual bila memang belum lunas.',
+      `${p.legacyKey} (${p.supplierCode})`,
+    );
   }
-  if (noDue.length) {
-    issues.push({
-      code: 'AR_NO_DUE_DATE',
-      title: 'Piutang tanpa tanggal jatuh tempo',
-      action: 'Jatuh tempo diisi sama dengan tanggal nota.',
-      count: noDue.length,
-      examples: noDue.slice(0, 5),
-    });
-  }
-  const unknownSupplier = payables.filter((p) => !p.supplierId);
-  if (unknownSupplier.length) {
-    issues.push({
-      code: 'AP_UNKNOWN_SUPPLIER',
-      title: 'Faktur kredit dengan supplier yang tidak ada di data master',
-      action: 'Tidak bisa dicentang. Catat sebagai hutang manual bila memang belum lunas.',
-      count: unknownSupplier.length,
-      examples: unknownSupplier.slice(0, 5).map((p) => `${p.legacyKey} (${p.supplierCode})`),
-    });
-  }
-  return { receivables, payables, issues };
+  return { receivables, payments, payables, issues: f.list() };
+}
+
+async function lookups(db: Queryable): Promise<ArApLookups> {
+  const customers = await repo.partyIdsByCode(db, 'customer');
+  const suppliers = await repo.partyIdsByCode(db, 'supplier');
+  const taken = await db.query<{ number: string }>(`SELECT upper(number) AS number FROM receivable_payments`);
+  return { customers, suppliers, takenPayments: new Set(taken.rows.map((r) => r.number)) };
 }
 
 export async function inspectArAp(deps: ImportDeps): Promise<IposArApInspectResult> {
   const { source, fingerprint, rows } = await readRows(deps);
-  const p = rows ? await plan(deps.pool, rows) : null;
+  const p = rows ? planArAp(rows, await lookups(deps.pool)) : null;
   return {
     source,
     fingerprint,
@@ -129,6 +239,80 @@ export async function inspectArAp(deps: ImportDeps): Promise<IposArApInspectResu
     payables: (p?.payables ?? []).map(({ supplierId: _s, ...x }) => x),
     blocker: fingerprint.length ? MISMATCH : await blocker(deps.pool),
   };
+}
+
+/** Bulk-writes the credit notes, instalments and allocations; returns the legacy_refs to record. */
+async function writeReceivables(tx: Queryable, ctx: RequestCtx, plan: ArApPlan) {
+  const cash = await tx.query<{ id: string }>(
+    `SELECT id FROM payment_methods WHERE kind = 'CASH' AND deleted_at IS NULL ORDER BY sort_order LIMIT 1`,
+  );
+  const cashMethod = cash.rows[0]?.id;
+  if (!cashMethod) throw new Error('cash payment method missing');
+  const refs: { entity: string; legacyKey: string; entityId: string }[] = [];
+  const docIds = new Map<string, string>();
+  const docRows = plan.receivables.map((r) => {
+    const id = uuidv7();
+    docIds.set(r.legacyKey, id);
+    refs.push({ entity: 'receivable', legacyKey: r.legacyKey, entityId: id });
+    const status = r.paid.isZero() ? 'OPEN' : r.paid.gte(r.amount) ? 'PAID' : 'PARTIAL';
+    // OPENING until linkImportedReceivables() finds the note of the history scope.
+    return [id, r.customerId, 'OPENING', r.legacyKey, r.docDate, r.dueDate, r.amount, toMoney(r.paid), status];
+  });
+  // Allocation ids in instalment order (strictly increasing timestamps): a reprinted iPOS BP then
+  // shows "sisa" as it was right after that instalment (ar-ap repo getPayment).
+  const allocCount = plan.payments.reduce((n, p) => n + p.allocations.length, 0);
+  let tick = Date.now() - allocCount - 1;
+  const paymentRows: unknown[][] = [];
+  const allocRows: unknown[][] = [];
+  for (const p of plan.payments) {
+    const id = uuidv7();
+    refs.push({ entity: 'receivable_payment', legacyKey: p.legacyKey, entityId: id });
+    paymentRows.push([id, p.legacyKey, p.customerId, p.paidAt, cashMethod, p.amount, p.note, ctx.userId]);
+    for (const a of p.allocations) allocRows.push([uuidv7((tick += 1)), id, docIds.get(a.legacyKey)!, a.amount]);
+  }
+  await insertMany(
+    tx,
+    'receivables',
+    [
+      ['id', 'uuid'],
+      ['customer_id', 'uuid'],
+      ['source_type', 'text'],
+      ['doc_number', 'text'],
+      ['doc_date', 'date'],
+      ['due_date', 'date'],
+      ['amount', 'numeric'],
+      ['paid_amount', 'numeric'],
+      ['status', 'text'],
+    ],
+    docRows,
+  );
+  await insertMany(
+    tx,
+    'receivable_payments',
+    [
+      ['id', 'uuid'],
+      ['number', 'text'],
+      ['customer_id', 'uuid'],
+      ['paid_at', 'timestamptz'],
+      ['payment_method_id', 'uuid'],
+      ['amount', 'numeric'],
+      ['note', 'text'],
+      ['created_by', 'uuid'],
+    ],
+    paymentRows,
+  );
+  await insertMany(
+    tx,
+    'receivable_payment_allocations',
+    [
+      ['id', 'uuid'],
+      ['receivable_payment_id', 'uuid'],
+      ['receivable_id', 'uuid'],
+      ['amount', 'numeric'],
+    ],
+    allocRows,
+  );
+  return refs;
 }
 
 export async function commitArAp(deps: ImportDeps, ctx: RequestCtx, raw: unknown): Promise<ImportBatch> {
@@ -148,9 +332,10 @@ export async function commitArAp(deps: ImportDeps, ctx: RequestCtx, raw: unknown
   try {
     const id = await withTransaction(deps.pool, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtext('mtpos.import'))");
+      await tx.query("SET LOCAL statement_timeout = '120s'"); // ~2.200 notes + 2.500 instalments
       const why = await blocker(tx);
       if (why) throw new AppError('IMPORT_NOT_ALLOWED', why, 409);
-      const p = await plan(tx, rows);
+      const p = planArAp(rows, await lookups(tx));
 
       // FR-MIG-05: only ticked invoices, never more than iPOS says is open.
       const candidates = new Map(p.payables.map((x) => [x.legacyKey, x]));
@@ -177,19 +362,7 @@ export async function commitArAp(deps: ImportDeps, ctx: RequestCtx, raw: unknown
       }
 
       const batchId = await repo.insertBatch(tx, { ...meta, status: 'RUNNING' });
-      const refs: { entity: string; legacyKey: string; entityId: string }[] = [];
-      for (const r of p.receivables) {
-        const docId = uuidv7();
-        await arAp.insertOpening(tx, 'AR', {
-          id: docId,
-          partyId: r.customerId,
-          docNumber: r.legacyKey,
-          docDate: r.docDate,
-          dueDate: r.dueDate,
-          amount: r.amount,
-        });
-        refs.push({ entity: 'receivable', legacyKey: r.legacyKey, entityId: docId });
-      }
+      const refs = await writeReceivables(tx, ctx, p);
       for (const t of ticked) {
         const docId = uuidv7();
         await arAp.insertOpening(tx, 'AP', {
@@ -203,52 +376,60 @@ export async function commitArAp(deps: ImportDeps, ctx: RequestCtx, raw: unknown
         refs.push({ entity: 'payable', legacyKey: t.legacyKey, entityId: docId });
       }
       await repo.insertLegacyRefs(tx, batchId, refs);
+      await repo.linkImportedReceivables(tx);
 
-      const got = await tx.query<{ n: number; open: string; customers: number }>(
-        `SELECT count(*)::int AS n, coalesce(sum(r.amount), 0)::numeric(18,2)::text AS open,
-                count(DISTINCT r.customer_id)::int AS customers
+      const got = await tx.query<{
+        n: number;
+        credit: string;
+        open_n: number;
+        open: string;
+        customers: number;
+        linked: number;
+      }>(
+        `SELECT count(*)::int AS n, coalesce(sum(r.amount), 0)::numeric(18,2)::text AS credit,
+                (count(*) FILTER (WHERE r.amount > r.paid_amount))::int AS open_n,
+                coalesce(sum(r.amount - r.paid_amount), 0)::numeric(18,2)::text AS open,
+                (count(DISTINCT r.customer_id) FILTER (WHERE r.amount > r.paid_amount))::int AS customers,
+                (count(*) FILTER (WHERE r.source_type = 'SALE'))::int AS linked
          FROM legacy_refs l JOIN receivables r ON r.id = l.entity_id WHERE l.import_batch_id = $1 AND l.entity = 'receivable'`,
         [batchId],
       );
+      const pays = await tx.query<{ n: number; total: string }>(
+        `SELECT count(*)::int AS n, coalesce(sum(p.amount), 0)::numeric(18,2)::text AS total
+         FROM legacy_refs l JOIN receivable_payments p ON p.id = l.entity_id
+         WHERE l.import_batch_id = $1 AND l.entity = 'receivable_payment'`,
+        [batchId],
+      );
       const g = got.rows[0]!;
+      const gp = pays.rows[0]!;
       const src = rows.source;
+      const count = (label: string, a: number, b: number, ok = a === b): ReconciliationRow => ({
+        label,
+        kind: 'count',
+        ipos: String(a),
+        imported: String(b),
+        ok,
+      });
+      const money = (label: string, a: string, b: string, ok = dec(a).eq(b)): ReconciliationRow => ({
+        label,
+        kind: 'money',
+        ipos: a,
+        imported: b,
+        ok,
+      });
       const reconciliation: ReconciliationRow[] = [
-        {
-          label: 'Nota piutang terbuka',
-          kind: 'count',
-          ipos: String(src.receivables),
-          imported: String(g.n),
-          ok: src.receivables === g.n,
-        },
-        {
-          label: 'Total sisa piutang',
-          kind: 'money',
-          ipos: src.receivablesOpen,
-          imported: g.open,
-          ok: dec(src.receivablesOpen).eq(g.open),
-        },
-        {
-          label: 'Pelanggan berpiutang',
-          kind: 'count',
-          ipos: String(src.customers),
-          imported: String(g.customers),
-          ok: src.customers === g.customers,
-        },
+        count('Nota kredit (lunas & belum)', src.creditNotes, g.n),
+        money('Total kredit', src.creditTotal, g.credit),
+        count('Pelunasan piutang (BP)', src.payments, gp.n),
+        money('Total pelunasan', src.paymentsTotal, gp.total),
+        count('Nota piutang terbuka', src.receivables, g.open_n),
+        money('Total sisa piutang', src.receivablesOpen, g.open),
+        count('Pelanggan berpiutang', src.customers, g.customers),
+        // Linking needs the history scope; before it, notes stay "saldo awal" — shown, not an error.
+        count('Nota kredit tertaut ke nota histori', g.n, g.linked, true),
         // Supplier debts are the Owner's choice: shown, not expected to match iPOS.
-        {
-          label: 'Faktur hutang dicentang',
-          kind: 'count',
-          ipos: String(src.payables),
-          imported: String(ticked.length),
-          ok: true,
-        },
-        {
-          label: 'Total hutang dicentang',
-          kind: 'money',
-          ipos: src.payablesOpen,
-          imported: sum(ticked.map((t) => ({ open: t.amount }))),
-          ok: true,
-        },
+        count('Faktur hutang dicentang', src.payables, ticked.length, true),
+        money('Total hutang dicentang', src.payablesOpen, sum(ticked.map((t) => ({ open: t.amount }))), true),
       ];
       await repo.finishBatch(tx, batchId, { counts: src, reconciliation, issues: p.issues, source });
       await recordAudit(tx, ctx, {

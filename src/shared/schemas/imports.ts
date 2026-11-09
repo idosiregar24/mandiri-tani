@@ -113,6 +113,13 @@ export interface IposArApCounts {
   receivables: number;
   receivablesOpen: string;
   customers: number;
+  /** Every JL note that went (partly) on credit, paid off or not — imported with its history. */
+  creditNotes: number;
+  /** Σ jmlkredit − krd_jml_pot of those notes. */
+  creditTotal: string;
+  /** BP payments (instalments) and their total. */
+  payments: number;
+  paymentsTotal: string;
   /** BL invoices with credit left — candidates only, the Owner ticks the real ones. */
   payables: number;
   payablesOpen: string;

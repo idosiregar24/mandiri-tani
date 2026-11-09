@@ -341,6 +341,23 @@ export async function partyIdsByCode(
   return new Map(r.rows.map((x) => [x.legacy_key, { id: x.id, name: x.name }]));
 }
 
+/**
+ * Ties the receivables imported from iPOS to the same notes imported by the history scope, so
+ * a credit note shows its total and DP next to its instalments. Runs at the end of both scopes,
+ * whichever comes last does the linking. Same number and same customer, one receivable per sale.
+ */
+export async function linkImportedReceivables(db: Queryable): Promise<number> {
+  const r = await db.query(
+    `UPDATE receivables r SET source_type = 'SALE', source_id = s.id
+     FROM legacy_refs l, sales s
+     WHERE l.source_system = 'IPOS5' AND l.entity = 'receivable' AND l.entity_id = r.id
+       AND r.source_type = 'OPENING' AND s.source = 'IPOS_IMPORT' AND s.number = l.legacy_key
+       AND s.customer_id = r.customer_id
+       AND NOT EXISTS (SELECT 1 FROM receivables x WHERE x.source_type = 'SALE' AND x.source_id = s.id)`,
+  );
+  return r.rowCount ?? 0;
+}
+
 /** iPOS kodeitem → product id, from the master import's legacy_refs. */
 export async function productIdsByCode(db: Queryable): Promise<Map<string, string>> {
   const r = await db.query<{ legacy_key: string; entity_id: string }>(

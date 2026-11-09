@@ -57,5 +57,17 @@
 - [ ] **B4** Impor iPOS: langkah "Piutang & hutang" (centang faktur hutang) + uji layar
   - 📌 Langkah 5 di halaman Impor iPOS: angka iPOS, catatan data, tabel faktur kredit dengan centang + isian sisa, rekonsiliasi di langkah 6. **Belum diuji di aplikasi** (butuh dialog pilih file Electron + backup asli)
 
+## C. Lanjutan 2026-11-09 — kredit + DP & riwayat kredit iPOS (permintaan owner)
+
+> Owner: "orang beli pupuk 6 jt, DP 2 jt — sistem harus menyimpan sisanya" dan "data kredit iPOS harus bisa dilihat lagi".
+> Reverse engineering backup iPOS (agregat): `tbl_ikhd.jmltunai` = DP, `jmlkredit` = jadi piutang; **KSR tidak pernah kredit** (0/5.453), semua 2.187 nota kredit = JL, 485 di antaranya DP + kredit; cicilan = `tbl_byrpiutanghd/dt` (2.548 BP, Rp 11,22 M), per nota Σ rincian = `krd_jml_byr` di semua nota.
+
+- [x] **C1** Impor lingkup piutang membawa **semua** nota kredit (lunas & belum) bernilai kredit asli + setiap BP iPOS sebagai `receivable_payments` + alokasi (tanpa baris kas, seperti histori). Ditautkan ke nota histori (`source_type = SALE`) oleh lingkup mana pun yang jalan terakhir
+  - 📌 Backup asli cocok 1:1: 2.187 nota Rp 13.835.838.000, 2.548 BP Rp 11.217.058.999, 308 terbuka Rp 2.618.779.001 / 165 pelanggan, 2.187/2.187 tertaut, `paid_amount = Σ alokasi` di semua nota, impor 1,3 dtk. Tanpa migrasi
+- [x] **C2** Kartu piutang (FR-ARAP-07, sebagian): `GET /receivables?customerId=&status=all` (+ total nota & DP), `GET /receivables/:id/history` (cicilan & potong retur, sisa sesudahnya); layar Piutang → detail pelanggan "Belum lunas · Semua nota kredit", klik nota = Total nota → DP → Jadi piutang → Sudah dicicil → Sisa + daftar cicilan
+  - 📌 Cetak ulang bukti BP: "sisa pelanggan sesudahnya" kini hanya menghitung nota yang sudah ada saat itu (sebelumnya nota impor yang terbit belakangan ikut terhitung)
+- [x] **C3** Kasir: bayar kurang di mode Kasir → tombol **Sisa jadi piutang (Alt+K)** mengubah nota jadi Faktur JL (sesuai iPOS — bukan KSR kredit); mode Faktur memberi label "Uang diterima sekarang (DP)"; layar selesai menyebut DP & sisa
+- [ ] **C4** Belum: pelanggan yang semua kreditnya sudah lunas tidak muncul di daftar Piutang (hanya yang masih berpiutang); kartu piutang cetak/PDF
+
 **Definition of Done:** typecheck/lint/test hijau; `paid_amount` = Σ alokasi untuk setiap
 piutang/hutang; total piutang terbuka hasil impor = iPOS.

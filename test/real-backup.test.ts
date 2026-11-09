@@ -87,7 +87,7 @@ const show = (title: string, b: ImportBatch) => {
 };
 
 describe.skipIf(!file)('real iPOS backup (local only)', () => {
-  it('imports master, stock and 2-year history 1:1 and runs the reports', async () => {
+  it('imports master, stock, 2-year history and the full credit history 1:1 and runs the reports', async () => {
     const ipos = await createTestDatabase();
     const t0 = Date.now();
     await restore(file!, ipos.config);
@@ -98,6 +98,8 @@ describe.skipIf(!file)('real iPOS backup (local only)', () => {
         ['master', '/imports/ipos/commit'],
         ['stock', '/imports/ipos/stock/commit'],
         ['history', '/imports/ipos/history/commit'],
+        // After history, so every credit note is linked to its sale (total, DP).
+        ['receivables', '/imports/ipos/receivables/commit'],
       ] as const) {
         const t = Date.now();
         const r = await api.call<Data<ImportBatch> & ErrBody>('POST', path, { purpose: 'DEVELOPMENT' });
@@ -105,6 +107,20 @@ describe.skipIf(!file)('real iPOS backup (local only)', () => {
         show(`${title} (${((Date.now() - t) / 1000).toFixed(1)} s)`, r.body.data);
         expect(r.body.data.reconciliation.filter((x) => !x.ok).map((x) => x.label)).toEqual([]);
       }
+
+      // Credit history invariants: paid = Σ allocations, every iPOS credit note tied to its sale.
+      const ar = await api.pool.query<Record<string, string | number>>(
+        `SELECT count(*)::int AS notes, (count(*) FILTER (WHERE r.source_type = 'SALE'))::int AS linked,
+                (count(*) FILTER (WHERE r.status = 'PAID'))::int AS paid_off,
+                (count(*) FILTER (WHERE s.paid_amount > 0))::int AS with_dp,
+                (count(*) FILTER (WHERE r.paid_amount <> coalesce(a.sum, 0)))::int AS paid_ne_alloc
+         FROM receivables r LEFT JOIN sales s ON s.id = r.source_id
+         LEFT JOIN (SELECT receivable_id, sum(amount) FROM receivable_payment_allocations GROUP BY 1) a
+           ON a.receivable_id = r.id`,
+      );
+      console.info('\npiutang', ar.rows[0]);
+      expect(ar.rows[0]).toMatchObject({ paid_ne_alloc: 0 });
+      expect(ar.rows[0]!.linked).toBe(ar.rows[0]!.notes);
 
       // Report timings on real volume (sprint-10 C9).
       for (const path of [

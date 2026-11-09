@@ -97,11 +97,31 @@ INSERT INTO tbl_imdt VALUES ('b1','0000001/BL/UTM/0126','NPK CONTOH 16',100,'ZAK
 
 -- Credit left (Sprint 9): open = jmlkredit − krd_jml_byr − krd_jml_pot. Cases: partly paid with a
 -- deduction, fully paid (ignored), no due date, unknown customer; two open credit purchases.
-UPDATE tbl_ikhd SET jmlkredit = 6300000, krd_jml_byr = 1000000, krd_jml_pot = 300000, byr_krd_jt = '2026-01-16' WHERE notransaksi = '0000001/JL/UTM/0126';
+-- 0000001/JL: a 6,3 jt note with a 2 jt DP (jmltunai, set with the history columns below) → 4,3 jt credit.
+UPDATE tbl_ikhd SET jmlkredit = 4300000, krd_jml_byr = 1000000, krd_jml_pot = 300000, byr_krd_jt = '2026-01-16' WHERE notransaksi = '0000001/JL/UTM/0126';
 UPDATE tbl_ikhd SET jmlkredit = 2690000, krd_jml_byr = 2690000, byr_krd_jt = '2026-01-21' WHERE notransaksi = '0000002/JL/UTM/0126';
 INSERT INTO tbl_ikhd VALUES
   ('0000003/JL/UTM/0226','UTM','2026-02-03 10:00','JL','PL0007',1500000,0,0,NULL),
   ('0000004/JL/UTM/0226','UTM','2026-02-04 10:00','JL','PL0404',250000,0,0,'2026-02-14');
+-- Instalments (BP): per note Σ dt.krd_jml_byr = tbl_ikhd.krd_jml_byr, per BP Σ dt = totalbayar, as in
+-- the store's data. Cases: two instalments paying a note off, one BP over two notes, a 0 line
+-- (ignored), and a BP of the unknown customer.
+UPDATE tbl_ikhd SET krd_jml_byr = 500000 WHERE notransaksi = '0000003/JL/UTM/0226';
+UPDATE tbl_ikhd SET krd_jml_byr = 100000 WHERE notransaksi = '0000004/JL/UTM/0226';
+CREATE TABLE tbl_byrpiutanghd (notransaksi varchar(50), kodekantor varchar(50), tanggal timestamp, tipe varchar(20), kodesupel varchar(50), totalbayar numeric(20,3), keterangan text);
+CREATE TABLE tbl_byrpiutangdt (iddetail varchar(150), notransaksi varchar(50), notrsmasuk varchar(50), tipe varchar(20), jmlkredit numeric(20,3), krd_jml_byr numeric(20,3));
+INSERT INTO tbl_byrpiutanghd VALUES
+  ('0001/BP/UTM/0126','UTM','2026-01-10 11:00','BP','PL0001',1000000,'CICILAN 1'),
+  ('0002/BP/UTM/0126','UTM','2026-01-15 09:30','BP','PL0007',1000000,NULL),
+  ('0003/BP/UTM/0226','UTM','2026-02-10 14:00','BP','PL0007',2190000,'LUNAS + DP NOTA BARU'),
+  ('0004/BP/UTM/0226','UTM','2026-02-12 08:00','BP','PL0404',100000,NULL);
+INSERT INTO tbl_byrpiutangdt VALUES
+  ('p1','0001/BP/UTM/0126','0000001/JL/UTM/0126','JL',4300000,1000000),
+  ('p2','0001/BP/UTM/0126','0000002/JL/UTM/0126','JL',2690000,0),
+  ('p3','0002/BP/UTM/0126','0000002/JL/UTM/0126','JL',2690000,1000000),
+  ('p4','0003/BP/UTM/0226','0000002/JL/UTM/0126','JL',2690000,1690000),
+  ('p5','0003/BP/UTM/0226','0000003/JL/UTM/0226','JL',1500000,500000),
+  ('p6','0004/BP/UTM/0226','0000004/JL/UTM/0226','JL',250000,100000);
 UPDATE tbl_imhd SET jmlkredit = 52000000, byr_krd_jt = '2026-01-12' WHERE notransaksi = '0000001/BL/UTM/0126';
 INSERT INTO tbl_imhd VALUES ('0000002/BL/UTM/0226','UTM','2026-02-05 08:00','BL','CV KODE NAMA',3000000,0,0,'2026-03-07');
 
@@ -151,6 +171,7 @@ UPDATE tbl_ikdt SET nobaris = 2 WHERE iddetail = 's4';
 UPDATE tbl_ikdt SET jmlkonversi = 50 WHERE satuan = 'ZAK';
 UPDATE tbl_ikhd h SET subtotal = (SELECT sum(total) FROM tbl_ikdt d WHERE d.notransaksi = h.notransaksi);
 UPDATE tbl_ikhd SET jmltunai = 50000, keterangan = 'DIAMBIL' WHERE notransaksi = '0000001/KSR/UTM/0126';
+UPDATE tbl_ikhd SET jmltunai = 2000000, keterangan = 'DP' WHERE notransaksi = '0000001/JL/UTM/0126';
 UPDATE tbl_ikhd SET potnomfaktur = 40000, keterangan = 'DIANTAR' WHERE notransaksi = '0000002/JL/UTM/0126';
 UPDATE tbl_ikhd SET biayalain = 100000 WHERE notransaksi = '0000003/JL/UTM/0226';
 UPDATE tbl_ikhd SET totalakhir = subtotal - potnomfaktur + biayalain;

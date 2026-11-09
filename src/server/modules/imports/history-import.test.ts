@@ -205,7 +205,8 @@ describe('iPOS import — 2-year history scope', () => {
   it('feeds the reports: sales recap, profit with unknown HPP, purchases, expenses', async () => {
     const period = 'from=2026-01-01&to=2026-02-28';
     const sales = (await api.call<Data<SalesReport>>('GET', `/reports/sales?${period}`)).body.data;
-    expect(sales.totals).toMatchObject({ count: 5, total: '10785000.00', paidCredit: '10740000.00' });
+    // "Bayar Kredit": 0000001/JL had a 2 jt DP, so 2 jt less than the JL total.
+    expect(sales.totals).toMatchObject({ count: 5, total: '10785000.00', paidCredit: '8740000.00' });
     expect(sales.invoices.every((i) => i.imported)).toBe(true);
 
     const pl = (await api.call<Data<ProfitLossReport>>('GET', `/reports/profit-loss?${period}`)).body.data;

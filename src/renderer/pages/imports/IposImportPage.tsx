@@ -415,8 +415,10 @@ function ArApStep({
   return (
     <Step n={5} title="Impor piutang & hutang">
       <p className="text-muted-foreground text-base">
-        Semua nota penjualan yang belum lunas di iPOS masuk sebagai piutang dengan nomor, tanggal, dan jatuh tempo
-        aslinya. Hutang supplier: centang hanya faktur yang <strong>benar-benar belum dibayar</strong>.
+        Semua nota kredit iPOS — yang belum lunas <strong>dan</strong> yang sudah lunas — masuk lengkap dengan nomor,
+        tanggal, jatuh tempo, DP, dan setiap cicilan (BP)-nya, jadi sisa piutang sama persis dengan iPOS. Nota ditautkan
+        ke nota histori (langkah 7) otomatis, urutan impornya bebas. Hutang supplier: centang hanya faktur yang{' '}
+        <strong>benar-benar belum dibayar</strong>.
       </p>
       {preview.fingerprint.length > 0 && (
         <Notice tone="error" title="Struktur tabel piutang/hutang tidak cocok — impor dihentikan" className="mt-4">
@@ -431,6 +433,8 @@ function ArApStep({
             ['Nota piutang terbuka', formatNumber(String(c.receivables))],
             ['Total sisa piutang', formatRupiah(c.receivablesOpen)],
             ['Pelanggan berpiutang', formatNumber(String(c.customers))],
+            ['Nota kredit (lunas & belum)', `${formatNumber(String(c.creditNotes))} · ${formatRupiah(c.creditTotal)}`],
+            ['Cicilan / pelunasan (BP)', `${formatNumber(String(c.payments))} · ${formatRupiah(c.paymentsTotal)}`],
           ].map(([label, value]) => (
             <div key={label} className="bg-surface-muted rounded-lg border p-3">
               <dt className="text-muted-foreground text-sm">{label}</dt>
@@ -588,7 +592,11 @@ function ScopeStatus({ done }: { done: ReturnType<typeof scopesDone> }) {
   const rows = [
     { label: 'Data master', hint: 'barang, satuan, harga, pelanggan, supplier, rekening', batch: done.master },
     { label: 'Stok awal', hint: 'jumlah stok & lapisan HPP FIFO', batch: done.stock },
-    { label: 'Piutang & hutang', hint: 'nota belum lunas & hutang supplier yang dicentang', batch: done.receivables },
+    {
+      label: 'Piutang & hutang',
+      hint: 'nota kredit + cicilannya & hutang supplier yang dicentang',
+      batch: done.receivables,
+    },
     { label: 'Histori 2 tahun', hint: 'nota jual, faktur beli & kas keluar lama — untuk laporan', batch: done.history },
   ];
   return (

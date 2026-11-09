@@ -1,6 +1,7 @@
 // iPOS importer, 2-YEAR HISTORY scope (FR-MIG-02 "Histori", D-14, sprint-10 S10-10).
 // Sales notes KSR/JL become sales `source = IPOS_IMPORT` (no stock movement, no cash, no
-// receivable — open receivables come from their own scope), BL invoices become direct purchase
+// receivable — credit notes and their BP instalments come from the receivables scope and are
+// linked to these notes by number, whichever scope runs last), BL invoices become direct purchase
 // invoices (no stock, no layers, no payable), KASO cash-outs become expenses from Kas Toko. One
 // transaction, legacy_refs per document, reconciliation against iPOS per type and per month.
 import { basename } from 'node:path';
@@ -374,6 +375,8 @@ export async function commitHistory(deps: ImportDeps, ctx: RequestCtx, raw: unkn
       const batchId = await repo.insertBatch(tx, { ...meta, status: 'RUNNING' });
       const refs = await writePlan(tx, ctx, plan);
       await repo.insertLegacyRefs(tx, batchId, refs);
+      // Credit notes imported earlier by the receivables scope now get their note (total, DP).
+      await repo.linkImportedReceivables(tx);
 
       const got = await historyImportedCounts(tx, batchId);
       const src = rows.source;
