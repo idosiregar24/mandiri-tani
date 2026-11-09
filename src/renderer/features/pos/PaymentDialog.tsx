@@ -1,7 +1,7 @@
 // F9 Bayar (FR-POS-10/11/14, sprint-6 C1). Keyboard: type the cash handed over (empty + Enter =
 // exact amount, the most common case), Alt+1…9 pick a payment method, Alt+N "diambil nanti", Enter
 // finishes. 423 → Owner PIN → retried automatically with the same Idempotency-Key.
-import { Banknote, Check, Landmark, Loader2, PackageOpen, Plus, QrCode, X } from 'lucide-react';
+import { Banknote, Check, Landmark, Loader2, PackageOpen, Plus, QrCode, UserRound, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { dec, Decimal } from '@shared/money';
 import type { Permission } from '@shared/permissions';
@@ -47,10 +47,13 @@ export function PaymentDialog({
   total,
   onDone,
   onClose,
+  onPickCustomer,
 }: {
   total: string;
   onDone: (sale: Sale) => void;
   onClose: () => void;
+  /** Leave to the customer picker (F8) and come back here; 'pickup' = then tick "diambil nanti". */
+  onPickCustomer: (then: 'pay' | 'pickup') => void;
 }) {
   const methods = usePaymentMethods();
   const list = methods.data ?? [];
@@ -158,9 +161,15 @@ export function PaymentDialog({
             if (!completed.current) focusScan();
           }}
           onKeyDown={(e) => {
-            if (e.altKey && e.key.toLowerCase() === 'n' && named) {
+            if (e.altKey && e.key.toLowerCase() === 'n') {
               e.preventDefault();
-              setPickupLater(!pickupLater);
+              if (named) setPickupLater(!pickupLater);
+              else onPickCustomer('pickup');
+              return;
+            }
+            if (e.key === 'F8' && !busy) {
+              e.preventDefault();
+              onPickCustomer('pay');
               return;
             }
             const n = Number(e.key);
@@ -174,7 +183,7 @@ export function PaymentDialog({
             <DialogTitle className="text-xl">{channel === 'FAKTUR' ? 'Bayar faktur' : 'Bayar'}</DialogTitle>
           </DialogHeader>
 
-          <div className="grid gap-6 md:grid-cols-[1fr_280px]">
+          <div className="grid gap-6 md:grid-cols-[1fr_300px]">
             <form
               className="space-y-4"
               onSubmit={(e) => {
@@ -248,7 +257,7 @@ export function PaymentDialog({
                   value={row?.amount ?? ''}
                   onChange={(v) => update(active, { amount: v })}
                   placeholder={channel === 'KASIR' ? 'kosong + Enter = uang pas' : '0'}
-                  className="h-16 pl-14 text-3xl md:text-3xl"
+                  className="h-14 pl-12 text-2xl md:text-2xl"
                 />
               </label>
               {rowKind === 'CASH' ? (
@@ -286,9 +295,9 @@ export function PaymentDialog({
             <aside className="bg-surface-muted flex flex-col gap-3 rounded-xl border p-4">
               <div>
                 <p className="text-muted-foreground">Total</p>
-                <p className="text-right text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+                <p className="text-right text-2xl font-bold whitespace-nowrap tabular-nums">{formatRupiah(total)}</p>
               </div>
-              <div className="flex justify-between text-lg">
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Dibayar</span>
                 <span className="tabular-nums">{formatRupiah(paid.toFixed(2))}</span>
               </div>
@@ -297,20 +306,22 @@ export function PaymentDialog({
               ) : short.gt(0) && channel === 'FAKTUR' ? (
                 <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
                   <p className="text-warning-ink">Sisa jadi piutang</p>
-                  <p className="text-right text-2xl font-bold tabular-nums">{formatRupiah(short.toFixed(2))}</p>
+                  <p className="text-right text-xl font-bold whitespace-nowrap tabular-nums">
+                    {formatRupiah(short.toFixed(2))}
+                  </p>
                   <p className="text-muted-foreground text-sm">Jatuh tempo mengikuti termin pelanggan.</p>
                 </div>
               ) : short.gt(0) ? (
                 <div>
                   <p className="text-error-ink">Kurang</p>
-                  <p className="text-error-ink text-right text-3xl font-bold tabular-nums">
+                  <p className="text-error-ink text-right text-[2rem] leading-tight font-bold whitespace-nowrap tabular-nums">
                     {formatRupiah(short.toFixed(2))}
                   </p>
                 </div>
               ) : (
                 <div>
                   <p className="text-success-ink">Kembalian</p>
-                  <p className="text-success-ink text-right text-5xl font-bold tabular-nums">
+                  <p className="text-success-ink text-right text-[2rem] leading-tight font-bold whitespace-nowrap tabular-nums">
                     {formatRupiah(change.toFixed(2))}
                   </p>
                 </div>
@@ -338,10 +349,28 @@ export function PaymentDialog({
                     </span>
                   </span>
                 </label>
+              ) : channel === 'FAKTUR' ? (
+                <div className="border-warning/40 bg-warning/10 mt-auto space-y-2 rounded-lg border p-3">
+                  <p className="text-warning-ink font-medium">Faktur wajib atas nama pelanggan.</p>
+                  <Button type="button" variant="outline" className="h-10 w-full" onClick={() => onPickCustomer('pay')}>
+                    <UserRound /> Pilih pelanggan <kbd className="ml-1 text-xs opacity-70">F8</kbd>
+                  </Button>
+                </div>
               ) : (
-                <span className="mt-auto" />
+                <button
+                  type="button"
+                  onClick={() => onPickCustomer('pickup')}
+                  className="bg-background hover:border-primary/60 mt-auto flex items-start gap-3 rounded-lg border border-dashed p-3 text-left"
+                >
+                  <PackageOpen className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                  <span>
+                    <span className="flex items-center gap-2 font-medium">
+                      Barang diambil nanti? <kbd className="text-xs">Alt+N</kbd>
+                    </span>
+                    <span className="text-muted-foreground text-sm">Pilih pelanggan dulu — nota harus bernama.</span>
+                  </span>
+                </button>
               )}
-              {channel === 'FAKTUR' && !named && <Notice tone="warning">Faktur wajib atas nama pelanggan (F8).</Notice>}
 
               <Button
                 size="lg"

@@ -98,6 +98,14 @@ export const CustomerInput = z.object({
 });
 export type CustomerInput = z.input<typeof CustomerInput>;
 
+/** Cashier's quick add from the customer picker (PRD §4.2 `customers.create`: name + HP, plus village). */
+export const QuickCustomerInput = z.object({
+  name: RequiredText('Nama pelanggan', 150),
+  phone: Phone,
+  village: OptionalText(100),
+});
+export type QuickCustomerInput = z.input<typeof QuickCustomerInput>;
+
 export interface Customer {
   id: string;
   code: string;
@@ -113,6 +121,10 @@ export interface Customer {
   notes: string | null;
   isActive: boolean;
   updatedAt: string;
+  /** Open receivables balance (OPEN + PARTIAL), decimal string. */
+  debtAmount: string;
+  /** Last completed sale; null = never bought. */
+  lastSaleAt: string | null;
 }
 
 export interface CustomerSummary {

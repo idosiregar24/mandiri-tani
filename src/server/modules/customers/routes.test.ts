@@ -104,6 +104,72 @@ describe('customers', () => {
     expect((await api.call('GET', '/customers', undefined, { as: 'ANONYMOUS' })).status).toBe(401);
   });
 
+  it('lets KASIR quick-add a customer (name, HP, village) with default terms, audited', async () => {
+    const res = await api.call<Data<Customer>>(
+      'POST',
+      '/customers/quick',
+      { name: 'Pak Cepat', phone: '0813 1111 2222', village: 'Mekarsari', creditLimit: '999' },
+      { as: 'KASIR' },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({
+      name: 'Pak Cepat',
+      phone: '081311112222',
+      village: 'Mekarsari',
+      customerGroupId: null,
+      creditLimit: null, // extra fields are ignored — only the Owner sets credit
+      paymentTermDays: 10,
+      debtAmount: '0.00',
+      lastSaleAt: null,
+    });
+    expect(res.body.data.code).toMatch(/^PL\d{4}$/);
+    const audit = await api.pool.query(
+      "SELECT after FROM audit_logs WHERE action = 'customer.quick_create' AND entity_id = $1",
+      [res.body.data.id],
+    );
+    expect(audit.rows[0]?.after).toMatchObject({ name: 'Pak Cepat' });
+
+    const empty = await api.call<ErrBody>('POST', '/customers/quick', { name: '  ' }, { as: 'KASIR' });
+    expect(empty.status).toBe(400);
+    expect((await api.call('POST', '/customers/quick', { name: 'X' }, { as: 'ANONYMOUS' })).status).toBe(401);
+  });
+
+  it('reports open receivables and the last sale; sort=recent puts last served first', async () => {
+    const mk = async (name: string) =>
+      (await api.call<Data<Customer>>('POST', '/customers', { name: `Urut ${name}` })).body.data;
+    const [a, b, c] = [await mk('A'), await mk('B'), await mk('C')];
+    const ids = await api.pool.query<{ d: string; u: string; w: string }>(
+      'SELECT (SELECT id FROM devices LIMIT 1) AS d, (SELECT id FROM users LIMIT 1) AS u, (SELECT id FROM warehouses LIMIT 1) AS w',
+    );
+    const { d, u, w } = ids.rows[0]!;
+    const sale = (customerId: string, n: string, at: string) =>
+      api.pool.query(
+        `INSERT INTO sales (number, status, device_id, cashier_id, customer_id, warehouse_id, trx_at)
+         VALUES ($1, 'COMPLETED', $2, $3, $4, $5, $6)`,
+        [n, d, u, customerId, w, at],
+      );
+    await sale(b.id, 'T-URUT-1', '2026-10-01T09:00:00+07:00');
+    await sale(c.id, 'T-URUT-2', '2026-10-05T09:00:00+07:00');
+    await api.pool.query(
+      `INSERT INTO receivables (customer_id, source_type, doc_number, doc_date, due_date, amount, paid_amount, status)
+       VALUES ($1, 'OPENING', 'OP-1', '2026-10-01', '2026-10-11', 500000, 125000, 'PARTIAL'),
+              ($1, 'OPENING', 'OP-2', '2026-10-01', '2026-10-11', 300000, 300000, 'PAID')`,
+      [c.id],
+    );
+
+    const recent = await api.call<ListBody<Customer>>('GET', '/customers?q=Urut&sort=recent', undefined, {
+      as: 'KASIR',
+    });
+    expect(recent.body.data.map((x) => x.name)).toEqual(['Urut C', 'Urut B', 'Urut A']);
+    const byName = await api.call<ListBody<Customer>>('GET', '/customers?q=Urut');
+    expect(byName.body.data.map((x) => x.name)).toEqual(['Urut A', 'Urut B', 'Urut C']);
+    const cRow = recent.body.data[0]!;
+    expect(cRow.debtAmount).toBe('375000.00'); // PAID rows don't count
+    expect(new Date(cRow.lastSaleAt!).toISOString()).toBe('2026-10-05T02:00:00.000Z');
+    expect(recent.body.data.find((x) => x.id === a.id)).toMatchObject({ debtAmount: '0.00', lastSaleAt: null });
+    expect((await api.call<ErrBody>('GET', '/customers?sort=random')).status).toBe(400);
+  });
+
   it('returns customer summary with group distribution and counts', async () => {
     const res = await api.call<Data<CustomerSummary>>('GET', '/customers/summary');
     expect(res.status).toBe(200);

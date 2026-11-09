@@ -1,5 +1,5 @@
 // Backoffice layout: sidebar on clean canvas, content on white panel with breadcrumbs.
-import { CalendarDays, ChevronDown, ChevronRight, Leaf, LogOut, UserRound } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Leaf, LogOut, UserRound, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { Button } from '@/components/ui/button';
@@ -27,32 +27,25 @@ export function AppShell() {
     }
   });
 
-  const toggleGroup = (groupLabel: string) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [groupLabel]: !prev[groupLabel] };
-      try {
-        localStorage.setItem('mandiri-tani.sidebar-collapsed-groups', JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
+  const toggleGroup = (groupLabel: string) =>
+    setCollapsedGroups((prev) => ({ ...prev, [groupLabel]: !prev[groupLabel] }));
 
-  // If navigating to a page in a group, automatically expand it so active link is visible
+  // Navigated into a collapsed group → expand it so the active link is visible
+  // (adjusting state during render when the page's group changes — no effect needed).
+  const [groupShown, setGroupShown] = useState<string | undefined>(undefined); // undefined → also runs on first render
+  if (here?.group.label !== groupShown) {
+    setGroupShown(here?.group.label);
+    const label = here?.group.label;
+    if (label && collapsedGroups[label]) setCollapsedGroups((prev) => ({ ...prev, [label]: false }));
+  }
+
   useEffect(() => {
-    if (here?.group.label && collapsedGroups[here.group.label]) {
-      setCollapsedGroups((prev) => {
-        const next = { ...prev, [here.group.label]: false };
-        try {
-          localStorage.setItem('mandiri-tani.sidebar-collapsed-groups', JSON.stringify(next));
-        } catch {
-          // ignore
-        }
-        return next;
-      });
+    try {
+      localStorage.setItem('mandiri-tani.sidebar-collapsed-groups', JSON.stringify(collapsedGroups));
+    } catch {
+      // private window / blocked storage: the sidebar just forgets
     }
-  }, [here?.group.label]);
+  }, [collapsedGroups]);
 
   return (
     <div className="bg-canvas flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible print:bg-background">
@@ -100,14 +93,12 @@ export function AppShell() {
                       <li key={item.to}>
                         {item.soon ? (
                           <span
-                            className="text-muted-foreground/60 flex h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm"
+                            className="text-muted-foreground/60 flex h-10 cursor-not-allowed items-center gap-3 rounded-xl px-2 text-sm"
                             aria-disabled="true"
                           >
-                            <item.icon className="size-4 shrink-0" aria-hidden />
+                            <NavIcon icon={item.icon} />
                             <span className="flex-1 truncate">{item.label}</span>
-                            <span className="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-[10px]">
-                              Segera
-                            </span>
+                            <span className="text-muted-foreground/70 text-xs">Segera</span>
                           </span>
                         ) : (
                           <NavLink
@@ -115,7 +106,7 @@ export function AppShell() {
                             end={item.to === '/'}
                             className={({ isActive }) =>
                               cn(
-                                'flex h-10 items-center gap-3 rounded-xl border px-3 text-sm transition-all duration-150',
+                                'group/nav flex h-10 items-center gap-3 rounded-xl border px-2 text-sm transition-colors duration-150',
                                 'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
                                 isActive
                                   ? 'bg-nav-active border-border text-foreground font-semibold shadow-xs'
@@ -123,10 +114,10 @@ export function AppShell() {
                               )
                             }
                           >
-                            <item.icon className="size-4 shrink-0" aria-hidden />
+                            <NavIcon icon={item.icon} />
                             <span className="flex-1 truncate">{item.label}</span>
                             {item.count && totals.data && (
-                              <span className="text-muted-foreground bg-surface-muted border border-border rounded-full px-2 py-0.5 text-xs font-mono font-medium tabular-nums">
+                              <span className="text-muted-foreground group-aria-[current=page]/nav:text-foreground pr-1 text-xs font-medium tabular-nums">
                                 {formatNumber(String(totals.data[item.count]))}
                               </span>
                             )}
@@ -149,7 +140,10 @@ export function AppShell() {
       <div className="bg-background my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border shadow-xs print:m-0 print:block print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
         <PreparationBanner />
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/70 px-6 print:hidden">
-          <nav aria-label="Lokasi" className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm font-medium">
+          <nav
+            aria-label="Lokasi"
+            className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm font-medium"
+          >
             {here?.group.label && (
               <>
                 <span className="text-muted-foreground">{here.group.label}</span>
@@ -174,6 +168,21 @@ export function AppShell() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** Menu icon in a small tile: neutral, light green on hover, solid green on the active page. */
+function NavIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return (
+    <span
+      className={cn(
+        'bg-background border-border text-foreground/70 flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-2xs transition-colors',
+        'group-hover/nav:border-tani-green-light group-hover/nav:bg-tani-green-light group-hover/nav:text-tani-green-dark',
+        'group-aria-[current=page]/nav:border-primary group-aria-[current=page]/nav:bg-primary group-aria-[current=page]/nav:text-primary-foreground',
+      )}
+    >
+      <Icon className="size-4" strokeWidth={2} aria-hidden />
+    </span>
   );
 }
 

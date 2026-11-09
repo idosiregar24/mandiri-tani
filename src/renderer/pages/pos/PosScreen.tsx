@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { dec } from '@shared/money';
 import type { PosProduct } from '@shared/schemas/pos';
 import type { Sale, SaleChannel } from '@shared/schemas/sales';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -47,7 +48,7 @@ import { Band, Chip, Kbd, Pill, Row, Section, SummaryItem } from '@/features/pos
 import { PosCart, type LineAction } from '@/features/pos/PosCart';
 import { SaleDoneDialog } from '@/features/pos/SaleDoneDialog';
 import { ScanBox } from '@/features/pos/ScanBox';
-import { cartTotals, usePosStore } from '@/features/pos/store';
+import { cartTotals, usePosStore, type CartCustomer } from '@/features/pos/store';
 import { formatDateTime, formatRupiah } from '@/lib/format';
 import { POS_HOTKEYS, useHotkeys, type PosAction } from '@/lib/hotkeys';
 import { useScanner } from '@/lib/scanner';
@@ -56,7 +57,9 @@ import { cn } from '@/lib/utils';
 
 type DialogState =
   | { kind: LineAction | 'remove'; key: string }
-  | { kind: 'discount' | 'customer' | 'help' | 'clear' | 'pay' | 'charges' | 'history' | 'hold' | 'held' }
+  | { kind: 'discount' | 'help' | 'clear' | 'pay' | 'charges' | 'history' | 'hold' | 'held' }
+  /** `then`: the picker was opened on the way to paying — go on to the payment dialog after. */
+  | { kind: 'customer'; then?: 'pay' | 'pickup' }
   | { kind: 'receivable'; party: { id: string; name: string } | null }
   | { kind: 'done'; sale: Sale }
   | null;
@@ -132,8 +135,18 @@ export function PosScreen() {
   const pay = () => {
     if (!lines.length) return setProblem('Nota masih kosong. Scan atau cari barang dulu.');
     if (totals.missingPrice) return setProblem('Masih ada barang tanpa harga. Pilih barisnya lalu tekan Ctrl+H.');
-    if (needsCustomer) return setDialog({ kind: 'customer' });
+    if (needsCustomer) return setDialog({ kind: 'customer', then: 'pay' });
     setProblem(null);
+    setDialog({ kind: 'pay' });
+  };
+
+  /** Customer picked (F8). Opened from Bayar → straight back to the payment dialog. */
+  const onCustomerPicked = (c: CartCustomer | null, then?: 'pay' | 'pickup') => {
+    store().setCustomer(c);
+    const st = store();
+    const blocked = (st.channel === 'FAKTUR' && !c) || cartTotals(st.lines, st.totalTarget).missingPrice;
+    if (!then || !st.lines.length || blocked) return close();
+    if (then === 'pickup' && c) st.setPickupLater(true);
     setDialog({ kind: 'pay' });
   };
 
@@ -169,7 +182,7 @@ export function PosScreen() {
       lines.length
         ? setProblem('Selesaikan, tahan (F6), atau kosongkan nota ini dulu sebelum mengambil nota tertahan.')
         : setDialog({ kind: 'held' }),
-    pickup: () => navigate('/pengambilan'),
+    pickup: () => navigate('/pengambilan', { state: { from: 'kasir' } }),
     reprint: () => (lastSale ? setDialog({ kind: 'done', sale: lastSale }) : setDialog({ kind: 'history' })),
     lock: () => logout.mutate(),
   };
@@ -280,11 +293,17 @@ export function PosScreen() {
               {customer ? (
                 <>
                   <p className="text-base font-semibold">{customer.name}</p>
+                  {(customer.village || customer.phone) && (
+                    <p className="text-muted-foreground text-sm">
+                      {[customer.village, customer.phone].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                   {customer.groupName && <Pill>Grup {customer.groupName}</Pill>}
+                  <CreditInfo customer={customer} faktur={faktur} />
                   {(outstanding.data?.length ?? 0) > 0 && (
                     <button
                       type="button"
-                      onClick={() => navigate('/pengambilan', { state: { customerId: customer.id } })}
+                      onClick={() => navigate('/pengambilan', { state: { customerId: customer.id, from: 'kasir' } })}
                       className="text-info-ink mt-1.5 block text-left text-sm underline decoration-dotted underline-offset-4"
                     >
                       Masih ada {outstanding.data!.length} barang belum diambil (F11)
@@ -397,7 +416,12 @@ export function PosScreen() {
         />
       )}
       {dialog?.kind === 'customer' && (
-        <CustomerDialog onClose={close} onPick={(c) => (store().setCustomer(c), close())} />
+        <CustomerDialog
+          title={dialog.then === 'pickup' ? 'Barang diambil nanti — atas nama siapa?' : undefined}
+          withWalkIn={dialog.then !== 'pickup'}
+          onClose={dialog.then ? () => setDialog({ kind: 'pay' }) : close}
+          onPick={(c) => onCustomerPicked(c, dialog.then)}
+        />
       )}
       {dialog?.kind === 'help' && <HelpDialog onClose={close} />}
       {dialog?.kind === 'receivable' && !dialog.party && (
@@ -426,6 +450,7 @@ export function PosScreen() {
         <PaymentDialog
           total={totals.total}
           onClose={close}
+          onPickCustomer={(then) => setDialog({ kind: 'customer', then })}
           onDone={(sale) => {
             store().clear();
             setLastSale(sale);
@@ -473,6 +498,28 @@ const LINE_ACTIONS: { action: LineAction | 'remove'; hotkey: PosAction; icon: ty
   { action: 'price', hotkey: 'price', icon: Pencil, label: 'Harga' },
   { action: 'remove', hotkey: 'removeLine', icon: Trash2, label: 'Hapus' },
 ];
+
+/** FR-POS-21: open receivables, and on a faktur the credit left (null limit = no limit, D-7). */
+function CreditInfo({ customer, faktur }: { customer: CartCustomer; faktur: boolean }) {
+  if (customer.debtAmount === undefined) return null;
+  const debt = dec(customer.debtAmount);
+  const left = customer.creditLimit != null ? dec(customer.creditLimit).minus(debt) : null;
+  if (debt.isZero() && !(faktur && left)) return null;
+  return (
+    <div className="mt-1.5 space-y-0.5 text-sm">
+      {debt.gt(0) && (
+        <p className="text-warning-ink">
+          Piutang <span className="font-semibold tabular-nums">{formatRupiah(customer.debtAmount)}</span>
+        </p>
+      )}
+      {faktur && left && (
+        <p className={left.gt(0) ? 'text-muted-foreground' : 'text-error-ink'}>
+          Sisa limit kredit <span className="font-semibold tabular-nums">{formatRupiah(left.toFixed(2))}</span>
+        </p>
+      )}
+    </div>
+  );
+}
 
 function LineActions({ onAction, disabled }: { onAction: (a: LineAction | 'remove') => void; disabled: boolean }) {
   return (

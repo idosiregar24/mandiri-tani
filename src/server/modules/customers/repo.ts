@@ -20,13 +20,29 @@ const SELECT = `
   SELECT c.id, c.code, c.name, c.phone, c.address, c.village,
          c.customer_group_id AS "customerGroupId", g.name AS "customerGroupName",
          c.credit_limit::text AS "creditLimit", c.payment_term_days AS "paymentTermDays",
-         c.is_walk_in AS "isWalkIn", c.notes, c.is_active AS "isActive", c.updated_at AS "updatedAt"
+         c.is_walk_in AS "isWalkIn", c.notes, c.is_active AS "isActive", c.updated_at AS "updatedAt",
+         coalesce(d.debt, 0)::numeric(18,2)::text AS "debtAmount", ls.at AS "lastSaleAt"
   FROM customers c
-  LEFT JOIN customer_groups g ON g.id = c.customer_group_id`;
+  LEFT JOIN customer_groups g ON g.id = c.customer_group_id
+  LEFT JOIN LATERAL (
+    SELECT sum(r.amount - r.paid_amount) AS debt FROM receivables r
+    WHERE r.customer_id = c.id AND r.status IN ('OPEN', 'PARTIAL')
+  ) d ON true
+  LEFT JOIN LATERAL (
+    SELECT max(s.trx_at) AS at FROM sales s WHERE s.customer_id = c.id AND s.status = 'COMPLETED'
+  ) ls ON true`;
 
 export async function list(
   db: Queryable,
-  opts: { q?: string; groupId?: string; includeInactive: boolean; limit: number; offset: number },
+  opts: {
+    q?: string;
+    groupId?: string;
+    includeInactive: boolean;
+    /** 'recent' = last served first (cashier picker with an empty search box). */
+    sort?: 'name' | 'recent';
+    limit: number;
+    offset: number;
+  },
 ): Promise<{ rows: Customer[]; total: number }> {
   const where = ['c.deleted_at IS NULL'];
   const params: unknown[] = [];
@@ -46,8 +62,9 @@ export async function list(
     (await db.query<{ n: string }>(`SELECT count(*) AS n FROM customers c WHERE ${clause}`, params)).rows[0]!.n,
   );
   params.push(opts.limit, opts.offset);
+  const order = opts.sort === 'recent' ? 'ls.at DESC NULLS LAST, c.name, c.code' : 'c.name, c.code';
   const rows = await db.query<Customer>(
-    `${SELECT} WHERE ${clause} ORDER BY c.is_walk_in DESC, c.name, c.code LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    `${SELECT} WHERE ${clause} ORDER BY c.is_walk_in DESC, ${order} LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
   return { rows: rows.rows, total };

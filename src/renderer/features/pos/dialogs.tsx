@@ -1,7 +1,8 @@
 // Small dialogs of the cashier screen. Each one: focus starts in its main control, Enter
 // confirms, Esc closes, and focus goes back to the scan box afterwards (frontend-standards §6).
-import { Check, Search, UserRound, X } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowLeft, Check, Loader2, Search, UserPlus, UserRound, X } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import type { Customer } from '@shared/schemas/master';
 import { dec } from '@shared/money';
 import { discountForTarget, suggestedTotal } from '@shared/pos';
 import { resolvePrice } from '@shared/pricing';
@@ -21,8 +22,9 @@ import { Input } from '@/components/ui/input';
 import { formatNumber, formatQty, formatRupiah } from '@/lib/format';
 import { POS_HOTKEYS } from '@/lib/hotkeys';
 import { useDebouncedValue } from '@/lib/hooks';
+import { useCan } from '@/lib/session';
 import { cn } from '@/lib/utils';
-import { useCustomerSearch, useLastPrices } from './api';
+import { useCustomerSearch, useLastPrices, useQuickCreateCustomer } from './api';
 import { focusScan } from './focus';
 import { unitOf, type CartCustomer, type CartLine } from './store';
 
@@ -34,17 +36,28 @@ function PosDialog({
   onClose,
   children,
   wide,
+  onEscape,
 }: {
   title: string;
   description?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  /** Esc does this instead of closing (e.g. back to the previous step). */
+  onEscape?: () => void;
 }) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         className={cn(wide ? 'sm:max-w-2xl' : 'sm:max-w-md')}
+        onEscapeKeyDown={
+          onEscape
+            ? (e) => {
+                e.preventDefault();
+                onEscape();
+              }
+            : undefined
+        }
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           focusScan();
@@ -339,30 +352,77 @@ export function DiscountDialog({
 
 // ------------------------------------------------------------------ customer (F8)
 
+type CustomerOption = { kind: 'walkin' } | { kind: 'customer'; c: Customer } | { kind: 'add' };
+
+export const toCartCustomer = (c: Customer): CartCustomer => ({
+  id: c.id,
+  name: c.name,
+  groupId: c.customerGroupId,
+  groupName: c.customerGroupName,
+  village: c.village,
+  phone: c.phone,
+  debtAmount: c.debtAmount,
+  creditLimit: c.creditLimit,
+});
+
 export function CustomerDialog({
   onPick,
   onClose,
   title = 'Pilih pelanggan',
   withWalkIn = true,
+  allowCreate = withWalkIn,
 }: {
   onPick: (c: CartCustomer | null) => void;
   onClose: () => void;
   title?: string;
-  /** Row 0 "Umum" (walk-in) — off where a registered customer is required (receivable payment). */
+  /** Row "Umum" (walk-in) — off where a registered customer is required (receivable payment). */
   withWalkIn?: boolean;
+  /** "+ Pelanggan baru" at the end of the list (cashier quick add, `customers.create`). */
+  allowCreate?: boolean;
 }) {
+  const canCreate = useCan('customers.create') && allowCreate;
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
+  const [adding, setAdding] = useState<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const debounced = useDebouncedValue(q.trim(), 150);
   const found = useCustomerSearch(debounced, true);
   const rows = (found.data?.data ?? []).filter((c) => !c.isWalkIn && c.isActive);
-  const options: (CartCustomer | null)[] = [
-    ...(withWalkIn ? [null] : []),
-    ...rows.map((c) => ({ id: c.id, name: c.name, groupId: c.customerGroupId, groupName: c.customerGroupName })),
+  const typing = debounced !== '';
+  // While typing, Enter must pick the best match — never fall back to "Umum".
+  const options: CustomerOption[] = [
+    ...(withWalkIn && !typing ? [{ kind: 'walkin' as const }] : []),
+    ...rows.map((c) => ({ kind: 'customer' as const, c })),
+    ...(canCreate ? [{ kind: 'add' as const }] : []),
   ];
-  const phones = new Map(rows.map((c) => [c.id, c.phone]));
+  const at = Math.max(0, Math.min(active, options.length - 1));
+
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [at]);
+
+  const choose = (o: CustomerOption | undefined) => {
+    if (!o) return;
+    if (o.kind === 'walkin') onPick(null);
+    else if (o.kind === 'customer') onPick(toCartCustomer(o.c));
+    else setAdding(q.trim());
+  };
+
+  if (adding !== null) {
+    return (
+      <PosDialog
+        title="Pelanggan baru"
+        description="Cukup nama. Nomor HP dan desa membantu membedakan nama yang sama."
+        onClose={onClose}
+        onEscape={() => setAdding(null)}
+      >
+        <QuickCustomerForm initial={adding} onBack={() => setAdding(null)} onSaved={(c) => onPick(toCartCustomer(c))} />
+      </PosDialog>
+    );
+  }
+
   return (
-    <PosDialog title={title} description="Ketik nama atau nomor HP." onClose={onClose} wide>
+    <PosDialog title={title} description="Ketik nama, desa, atau nomor HP. ↑/↓ lalu Enter." onClose={onClose} wide>
       <div className="relative">
         <Search
           className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2"
@@ -378,45 +438,210 @@ export function CustomerDialog({
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
-              setActive((i) => (e.key === 'ArrowDown' ? Math.min(options.length - 1, i + 1) : Math.max(0, i - 1)));
+              setActive(e.key === 'ArrowDown' ? Math.min(options.length - 1, at + 1) : Math.max(0, at - 1));
             } else if (e.key === 'Enter') {
               e.preventDefault();
-              onPick(options[Math.min(active, options.length - 1)] ?? null);
+              // Results for text still being typed aren't in yet — wait for them.
+              if (q.trim() === debounced && !found.isFetching) choose(options[at]);
             }
           }}
           className="h-12 pl-11 text-lg md:text-lg"
           aria-label="Cari pelanggan"
         />
       </div>
-      <ul role="listbox" className="max-h-[50vh] space-y-1 overflow-y-auto">
-        {options.map((c, i) => (
+
+      <p className="text-muted-foreground -mb-2 text-sm font-medium">
+        {typing
+          ? found.isFetching
+            ? 'Mencari…'
+            : `${formatNumber(String(found.data?.meta.total ?? 0))} pelanggan cocok`
+          : 'Terakhir belanja'}
+      </p>
+
+      <ul ref={listRef} role="listbox" aria-label="Pelanggan" className="max-h-[52vh] space-y-1 overflow-y-auto">
+        {options.map((o, i) => (
           <li
-            key={c?.id ?? 'umum'}
+            key={o.kind === 'customer' ? o.c.id : o.kind}
+            data-index={i}
             role="option"
-            aria-selected={i === active}
-            onClick={() => onPick(c)}
+            aria-selected={i === at}
+            onClick={() => choose(o)}
             onMouseEnter={() => setActive(i)}
             className={cn(
-              'flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2',
-              i === active ? 'border-primary bg-tani-green-light' : 'border-transparent',
+              'flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2',
+              i === at ? 'border-primary bg-tani-green-light' : 'border-transparent',
+              o.kind === 'add' && 'text-tani-green-dark',
             )}
           >
-            <UserRound className="text-muted-foreground size-5" aria-hidden />
-            <div className="flex-1">
-              <p className="font-medium">{c ? c.name : 'Umum (tanpa nama)'}</p>
-              {c && phones.get(c.id) && <p className="text-muted-foreground text-sm">{phones.get(c.id)}</p>}
-            </div>
-            {c?.groupName && <span className="bg-surface-muted rounded-full border px-2 text-sm">{c.groupName}</span>}
+            {o.kind === 'walkin' && (
+              <>
+                <OptionIcon>
+                  <UserRound className="size-5" aria-hidden />
+                </OptionIcon>
+                <div className="flex-1">
+                  <p className="font-semibold">Umum (tanpa nama)</p>
+                  <p className="text-muted-foreground text-sm">Pembeli biasa, bayar lunas</p>
+                </div>
+              </>
+            )}
+            {o.kind === 'customer' && <CustomerOptionRow c={o.c} q={debounced} />}
+            {o.kind === 'add' && (
+              <>
+                <OptionIcon>
+                  <UserPlus className="size-5" aria-hidden />
+                </OptionIcon>
+                <p className="flex-1 font-semibold">
+                  {q.trim() ? `Tambah pelanggan baru "${q.trim()}"` : 'Tambah pelanggan baru'}
+                </p>
+              </>
+            )}
           </li>
         ))}
       </ul>
-      {found.data && found.data.meta.total > rows.length && (
+
+      {typing && !found.isFetching && rows.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          Menampilkan {formatNumber(String(rows.length))} pelanggan pertama — ketik lebih lengkap.
+          Tidak ada pelanggan dengan nama, desa, atau HP itu.{canCreate && ' Tekan Enter untuk menambah baru.'}
+        </p>
+      )}
+      {typing && found.data && found.data.meta.total > rows.length && (
+        <p className="text-muted-foreground text-sm">
+          Menampilkan {formatNumber(String(rows.length))} teratas — ketik lebih lengkap (mis. nama + desa).
         </p>
       )}
     </PosDialog>
   );
+}
+
+function OptionIcon({ children }: { children: ReactNode }) {
+  return (
+    <span className="bg-background text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full border">
+      {children}
+    </span>
+  );
+}
+
+function CustomerOptionRow({ c, q }: { c: Customer; q: string }) {
+  const detail = [c.village, c.phone].filter(Boolean).join(' · ');
+  return (
+    <>
+      <OptionIcon>
+        <span className="text-foreground text-sm font-semibold">{initials(c.name)}</span>
+      </OptionIcon>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2">
+          <span className="truncate font-semibold">
+            <Highlight text={c.name} q={q} />
+          </span>
+          {c.customerGroupName && (
+            <span className="bg-background shrink-0 rounded-full border px-2 text-xs">{c.customerGroupName}</span>
+          )}
+        </p>
+        <p className="text-muted-foreground truncate text-sm">
+          {detail ? <Highlight text={detail} q={q} /> : 'Desa & HP belum diisi'}
+          {c.lastSaleAt && <> · belanja {sinceLabel(c.lastSaleAt)}</>}
+        </p>
+      </div>
+      {dec(c.debtAmount).gt(0) && (
+        <div className="shrink-0 text-right">
+          <p className="text-muted-foreground text-xs">Piutang</p>
+          <p className="text-warning-ink font-semibold tabular-nums">{formatRupiah(c.debtAmount)}</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function QuickCustomerForm({
+  initial,
+  onBack,
+  onSaved,
+}: {
+  initial: string;
+  onBack: () => void;
+  onSaved: (c: Customer) => void;
+}) {
+  // Digits typed in the search box were a phone number, anything else a name.
+  const isPhone = initial !== '' && /^[\d\s+-]+$/.test(initial);
+  const [name, setName] = useState(isPhone ? '' : initial);
+  const [phone, setPhone] = useState(isPhone ? initial : '');
+  const [village, setVillage] = useState('');
+  const create = useQuickCreateCustomer();
+  const nameOk = name.trim() !== '';
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={submitWith(() => {
+        if (!nameOk || create.isPending) return;
+        create.mutate({ name, phone: phone || null, village: village || null }, { onSuccess: onSaved });
+      })}
+    >
+      <label className="block space-y-1.5">
+        <span className="font-medium">Nama</span>
+        <Input autoFocus={!isPhone} value={name} onChange={(e) => setName(e.target.value)} className="h-11" />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block space-y-1.5">
+          <span className="font-medium">No. HP</span>
+          <Input
+            autoFocus={isPhone}
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="h-11"
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="font-medium">Desa</span>
+          <Input value={village} onChange={(e) => setVillage(e.target.value)} className="h-11" />
+        </label>
+      </div>
+      <p className="text-muted-foreground text-sm">
+        Grup, limit kredit, dan alamat lengkap bisa dilengkapi Owner nanti.
+      </p>
+      {create.isError && <Notice tone="error">{create.error.message}</Notice>}
+      <DialogFooter>
+        <Button type="button" variant="outline" className="h-11" onClick={onBack}>
+          <ArrowLeft /> Kembali <kbd className="ml-1 text-xs opacity-70">Esc</kbd>
+        </Button>
+        <Button type="submit" className="h-11 px-5" disabled={!nameOk || create.isPending}>
+          {create.isPending ? <Loader2 className="animate-spin" /> : <Check />} Simpan &amp; pilih
+          <kbd className="ml-1 text-xs opacity-70">Enter</kbd>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+/** Mark the typed text inside a name / detail line (case-insensitive). */
+function Highlight({ text, q }: { text: string; q: string }) {
+  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (i < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="bg-tani-harvest/30 text-foreground rounded-sm">{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
+const jakartaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
+
+/** "hari ini", "kemarin", "5 hari lalu", else the date. */
+function sinceLabel(iso: string): string {
+  const days = Math.round((Date.parse(jakartaDay(new Date())) - Date.parse(jakartaDay(new Date(iso)))) / 86_400_000);
+  if (days <= 0) return 'hari ini';
+  if (days === 1) return 'kemarin';
+  if (days < 30) return `${days} hari lalu`;
+  return shortDate(iso);
 }
 
 // ------------------------------------------------------------------ help (F1)

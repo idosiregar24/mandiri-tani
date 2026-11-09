@@ -1,6 +1,6 @@
 // Customers (FR-MD-08): generated PLxxxx codes, the built-in walk-in customer UMUM
 // cannot be removed or given credit, credit-limit changes are audited.
-import { CustomerInput, type Customer, type CustomerSummary } from '@shared/schemas/master';
+import { CustomerInput, QuickCustomerInput, type Customer, type CustomerSummary } from '@shared/schemas/master';
 import type { z } from 'zod';
 import type { Pool, Queryable } from '../../db/pool';
 import { withTransaction } from '../../db/tx';
@@ -13,7 +13,14 @@ type Parsed = z.output<typeof CustomerInput>;
 
 export async function list(
   pool: Pool,
-  q: { q?: string; groupId?: string; includeInactive: boolean; page: number; pageSize: number },
+  q: {
+    q?: string;
+    groupId?: string;
+    includeInactive: boolean;
+    sort?: 'name' | 'recent';
+    page: number;
+    pageSize: number;
+  },
 ): Promise<{ rows: Customer[]; total: number; page: number; pageSize: number }> {
   const r = await repo.list(pool, { ...q, limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
   return { ...r, page: q.page, pageSize: q.pageSize };
@@ -53,6 +60,26 @@ export async function create(pool: Pool, ctx: RequestCtx, raw: unknown): Promise
         after: { creditLimit: input.creditLimit },
       });
     }
+    return (await repo.get(tx, id))!;
+  });
+}
+
+/**
+ * Cashier's quick add (name, HP, village) — everything else takes the normal defaults
+ * (no group, term 10 days, credit limit empty = D-7). The Owner completes the rest later.
+ */
+export async function quickCreate(pool: Pool, ctx: RequestCtx, raw: unknown): Promise<Customer> {
+  const quick = QuickCustomerInput.parse(raw);
+  const input = CustomerInput.parse(quick);
+  return withTransaction(pool, async (tx) => {
+    const code = await repo.nextCode(tx);
+    const id = await repo.insert(tx, await toRow(tx, input, code)).catch((err) => duplicate(err, code));
+    await recordAudit(tx, ctx, {
+      action: 'customer.quick_create',
+      entity: 'customer',
+      entityId: id,
+      after: { code, name: input.name },
+    });
     return (await repo.get(tx, id))!;
   });
 }

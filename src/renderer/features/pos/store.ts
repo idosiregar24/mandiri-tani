@@ -25,6 +25,12 @@ export interface CartCustomer {
   name: string;
   groupId: string | null;
   groupName: string | null;
+  /** Snapshot from the picker, shown on the summary card (FR-POS-21). */
+  village?: string | null;
+  phone?: string | null;
+  /** Open receivables at pick time; null limit = no limit (D-7). */
+  debtAmount?: string;
+  creditLimit?: string | null;
 }
 
 interface PosState {
