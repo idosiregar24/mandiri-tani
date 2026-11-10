@@ -111,3 +111,40 @@
     letter-spacing: -0.02em;
   }
 }
+
+/* Report preview (features/reports/print/ReportPreview): while it is open, printing and
+   "Simpan PDF" output only its paper pages — no toolbar, no app behind it, no zoom, no shadow. */
+@media print {
+  body.mt-report-printing {
+    background: #fff !important;
+  }
+  body.mt-report-printing > :not(.mt-report-print-root) {
+    display: none !important;
+  }
+  body.mt-report-printing .mt-report-print-root {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body.mt-report-printing .mt-report-toolbar,
+  body.mt-report-printing .mt-report-measure {
+    display: none !important;
+  }
+  body.mt-report-printing .mt-report-scroll,
+  body.mt-report-printing .mt-report-pages {
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    zoom: 1 !important;
+  }
+  body.mt-report-printing .mt-report-sheet {
+    box-shadow: none !important;
+    break-after: page;
+  }
+  body.mt-report-printing .mt-report-sheet:last-child {
+    break-after: auto;
+  }
+}

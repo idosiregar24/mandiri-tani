@@ -103,6 +103,13 @@ Pengguna belum ada.
 - [x] **E6** Impor iPOS: langkah **"Histori 2 tahun"** (pratinjau jumlah per tipe & bulan, catatan data, rekonsiliasi)
   - 📌 Langkah 7 "Impor histori 2 tahun" (angka iPOS per jenis, catatan data, tombol impor) + rekonsiliasi langkah 8; baris "Histori 2 tahun" di status lingkup; salinan iPOS sementara dihapus setelah piutang **dan** histori selesai
 
+- [x] **E7** Cetak Laporan Penjualan **format iPOS 5** (permintaan owner 2026-11-10: "cetak laporan penjualan belum sama dengan iPOS")
+  - 📌 **Reverse engineering** (tanpa membuka proteksi iPOS): katalog laporan dari `rep5.conf` (SQLite, `tbl_laporan`: 187 laporan, menu `LAP_JL` = 10 jenis), tata letak dari `Report/LapPenjualan/*.repx` (kode C# serialisasi DevExpress 10.1/12.1 — band, posisi 1/10 mm, font, binding, skrip `BeforePrint` di resource base64), form filter dari `Help_iPos5.chm` (laporanpenjualan1.htm), hasil cetak dibandingkan dengan PDF asli "Laporan Penjualan Bulan April 2026" (15 hal. A4 mendatar)
+  - 📌 **Form cetak** (tombol Cetak di Laporan Penjualan → `SalesPrintDialog`): Periode s/d, No Transaksi s/d, Pelanggan (kode) s/d, Gudang, User, Modul (Semua · Penjualan JL · Kasir KSR) + daftar jenis: **Penjualan Rekap**, **Penjualan Detail**, **Penjualan Harian**, **Jual Per Pelanggan Detail**, **Jual Per Pelanggan Rekap**, **Jual Per Retur**; tombol **Pratinjau** · **Cetak** · **Excel**. Kasir: hanya penjualannya hari ini (sama dengan S10-6)
+  - 📌 **Pratinjau** (`features/reports/print/ReportPreview`) = jendela Preview iPOS: halaman kertas asli (Report Header di hal. 1, judul kolom bergaris ganda + footer "tgl jam · USER · n/m" tiap halaman, total keseluruhan boleh berlanjut ke halaman berikut), kertas A4/F4/Letter, tegak/mendatar, zoom, navigasi halaman, **Cetak** (dialog Windows: printer, salinan, halaman), **Simpan PDF** (ukuran kertas persis), **Excel**. Angka `{0:n}` id-ID (`1.200.000,00`), tanggal `dd/MM/yyyy`, Arial, margin 3,8 mm — sama dengan template
+  - 📌 Server `GET /reports/sales/print?type=…` (+ `?format=xlsx`) dan `GET /reports/filter-options` (Owner). Tes: 6 tes integrasi (semua jenis, filter, kasir tanpa field HPP, Excel) + tes unit format/paginasi
+  - 📌 **Tidak diikutkan:** laporan per Sales (toko tidak punya data salesman), Rekap Per Gudang (satu gudang), filter Pajak, tombol Disain/Buat Baru/Hapus (desainer laporan DevExpress). Kolom iPOS yang tidak terisi di toko ini tetap dicetak seperti iPOS: Dept. kosong, K.Debit/K.Kredit 0,00. Kekeliruan template iPOS "Jual Per Retur" (label Potongan/Pajak tertukar) **tidak** ditiru
+
 ## F. Penutup
 
 - [x] **F1** `npm run typecheck && npm run lint && npm test` hijau; README (status S10, versi `exceljs`, penyimpangan S10-9/S10-11) & PRD (FR-MIG-02 BP ditunda) diperbarui

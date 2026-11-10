@@ -11,6 +11,8 @@ import type {
   ProfitByItemReport,
   ProfitLossReport,
   PurchasesReport,
+  ReportFilterOptions,
+  SalesPrintReport,
   SalesReport,
   StockReport,
   UndeliveredReport,
@@ -210,6 +212,100 @@ describe('sales report (FR-FIN-07/12)', () => {
   it('refuses a period longer than two years', async () => {
     const r = await get('/reports/sales?from=2020-01-01&to=2026-01-01');
     expect(r.status).toBe(400);
+  });
+});
+
+describe('sales print in the iPOS format (Laporan > Penjualan)', () => {
+  const print = (q: string, as: 'KASIR' | 'OWNER' = 'OWNER') =>
+    get<SalesPrintReport>(`/reports/sales/print?${period}&${q}`, as);
+
+  it('Rekap: iPOS columns, header block and totals over the counted notes', async () => {
+    const r = await print('type=rekap');
+    expect(r.status).toBe(200);
+    const d = r.body.data;
+    expect(d.title).toBe('Laporan Penjualan Rekap');
+    expect(d.invoices).toHaveLength(4);
+    expect(d.totals).toMatchObject({ count: 4, itemCount: '15', total: '2632000.00', paidCredit: '990000.00' });
+    const inv = d.invoices.find((i) => i.id === s2.id)!;
+    expect(inv).toMatchObject({
+      customerCode: tani.code,
+      itemCount: '2',
+      subtotal: '1240000.00',
+      discountPct: '0.00',
+      otherCharges: '50000.00',
+      total: '1290000.00',
+      paidCash: '300000.00',
+      paidCredit: '990000.00',
+    });
+    expect(d.header.filters).toEqual([`PERIODE : ${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(2, 4)} - ${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(2, 4)}`]);
+    expect(d.header.printedBy).toBe(d.header.printedBy.toUpperCase());
+    expect(d.header.company.name).toBeTruthy();
+  });
+
+  it('Detail lists every line; Harian one row per day; Per Pelanggan sums per customer', async () => {
+    const detail = (await print('type=detail')).body.data;
+    expect(detail.items).toHaveLength(4);
+    expect(detail.items.find((i) => i.saleId === s2.id)).toMatchObject({ qty: '2', unit: 'ZAK', price: '620000.00', total: '1240000.00' });
+    const harian = (await print('type=harian')).body.data;
+    expect(harian.days).toEqual([{ date: day, count: 4, total: '2632000.00', paidCash: '1642000.00', paidCredit: '990000.00' }]);
+    const pel = (await print('type=pelanggan-rekap')).body.data;
+    expect(pel.customers.find((c) => c.code === tani.code)).toMatchObject({ count: 1, total: '1290000.00' });
+    const pelDetail = (await print('type=pelanggan-detail')).body.data;
+    expect(pelDetail.invoices).toHaveLength(4);
+  });
+
+  it('Jual Per Retur: only notes with a return, with the return lines and totals', async () => {
+    const d = (await print('type=retur')).body.data;
+    expect(d.invoices).toHaveLength(1);
+    expect(d.returns).toHaveLength(1);
+    expect(d.returns[0]).toMatchObject({ saleId: d.invoices[0]!.id, itemCount: '1', total: '600000.00' });
+    expect(d.returnTotals).toEqual({ itemCount: '1', total: '600000.00' });
+    expect(d.totals).toMatchObject({ count: 1, total: '1200000.00' });
+  });
+
+  it('filters like the iPOS form: modul, pelanggan, no transaksi, user', async () => {
+    const faktur = (await print('type=rekap&channel=FAKTUR')).body.data;
+    expect(faktur.invoices.map((i) => i.id)).toEqual([s2.id]);
+    expect(faktur.header.filters).toContain('MODUL : PENJUALAN');
+    const cust = (await print(`type=rekap&customerFrom=${tani.code}&customerTo=${tani.code}`)).body.data;
+    expect(cust.invoices.map((i) => i.id)).toEqual([s2.id]);
+    expect(cust.header.filters).toContain(`PELANGGAN : ${tani.code} - ${tani.code}`);
+    const num = (await print(`type=rekap&numberFrom=${encodeURIComponent(s2.number!)}&numberTo=${encodeURIComponent(s2.number!)}`))
+      .body.data;
+    expect(num.invoices.map((i) => i.id)).toEqual([s2.id]);
+    const kasir = await api.pool.query<{ cashier_id: string }>(
+      `SELECT cashier_id FROM sales WHERE channel = 'KASIR' AND total = 130000 LIMIT 1`,
+    );
+    const byUser = (await print(`type=rekap&userId=${kasir.rows[0]!.cashier_id}`)).body.data;
+    expect(byUser.totals.count).toBe(2);
+    expect(byUser.header.filters.some((f) => f.startsWith('USER : '))).toBe(true);
+    const empty = (await print('type=rekap&numberFrom=&customerTo=&channel=')).body.data;
+    expect(empty.totals.count).toBe(4);
+  });
+
+  it('KASIR: own sales of today only, no cost fields; filter options are Owner only', async () => {
+    const r = await get<SalesPrintReport>(`/reports/sales/print?from=2020-01-01&to=${day}&type=detail`, 'KASIR');
+    expect(r.status).toBe(200);
+    expect(r.body.data).toMatchObject({ ownOnly: true, period: { from: day, to: day } });
+    expect(r.body.data.totals.count).toBe(2);
+    expect(JSON.stringify(r.body)).not.toMatch(/hpp|profit|cost/i);
+    expect((await get('/reports/filter-options', 'KASIR')).status).toBe(403);
+    const opts = await get<ReportFilterOptions>('/reports/filter-options');
+    expect(opts.status).toBe(200);
+    expect(opts.body.data.warehouses.length).toBeGreaterThan(0);
+    expect(JSON.stringify(opts.body)).not.toMatch(/hash/i);
+  });
+
+  it('every type also comes as Excel', async () => {
+    for (const type of ['rekap', 'detail', 'harian', 'pelanggan-detail', 'pelanggan-rekap', 'retur']) {
+      const res = await fetch(`${api.base}/reports/sales/print?${period}&type=${type}&format=xlsx`, {
+        headers: { authorization: `Bearer ${api.users.OWNER.token}` },
+      });
+      expect(res.status, type).toBe(200);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await res.arrayBuffer());
+      expect(wb.worksheets[0]!.rowCount, type).toBeGreaterThan(3);
+    }
   });
 });
 

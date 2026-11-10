@@ -16,6 +16,7 @@ import {
 } from './profit';
 import { purchasesReport, purchasesXlsx } from './purchases';
 import { salesReport, salesXlsx } from './sales';
+import { reportFilterOptions, salesPrint, salesPrintXlsx } from './sales-print';
 import { stockReport, stockXlsx } from './stock';
 
 /**
@@ -34,6 +35,14 @@ export function reportRoutes({ pool }: { pool: Pool }): Router {
   });
   router.get('/reports/sales', sales, async (req, res) => {
     await sendReport(req, res, await salesReport(pool, req.ctx, req.query), salesXlsx, 'penjualan');
+  });
+  // iPOS-format print of the sales report (Laporan > Penjualan): rows for the A4 layout, or Excel.
+  router.get('/reports/sales/print', sales, async (req, res) => {
+    const report = await salesPrint(pool, req.ctx, req.query);
+    await sendReport(req, res, report, salesPrintXlsx, `penjualan-${report.type}`);
+  });
+  router.get('/reports/filter-options', all, async (_req, res) => {
+    res.json({ data: await reportFilterOptions(pool) });
   });
   router.get('/reports/profit-by-item', profit, async (req, res) => {
     await sendReport(req, res, await profitByItem(pool, req.query), profitByItemXlsx, 'laba-per-barang');

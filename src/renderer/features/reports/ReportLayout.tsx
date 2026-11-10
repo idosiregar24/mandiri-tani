@@ -28,6 +28,11 @@ interface ReportLayoutProps {
   /** File name stem, e.g. "laba-per-barang". The period is appended. */
   fileName: string;
   landscape?: boolean;
+  /**
+   * Replaces the screen print: "Cetak" opens this report's own iPOS-format print form (with
+   * preview, PDF and Excel there), so the page's Simpan PDF button is not shown.
+   */
+  onPrint?: () => void;
   children: ReactNode;
 }
 
@@ -40,6 +45,7 @@ export function ReportLayout({
   exportParams,
   fileName,
   landscape = false,
+  onPrint,
   children,
 }: ReportLayoutProps) {
   const bridge = desktopBridge();
@@ -100,10 +106,10 @@ export function ReportLayout({
         description={description}
         actions={
           <>
-            <Button variant="outline" className="h-11" onClick={() => window.print()}>
+            <Button variant="outline" className="h-11" onClick={() => (onPrint ? onPrint() : window.print())}>
               <Printer /> Cetak
             </Button>
-            {bridge && (
+            {bridge && !onPrint && (
               <Button variant="outline" className="h-11" onClick={() => void savePdf()} disabled={busy !== null}>
                 {busy === 'pdf' ? <Loader2 className="animate-spin" /> : <FileText />} Simpan PDF
               </Button>

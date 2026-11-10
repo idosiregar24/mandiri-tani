@@ -134,12 +134,21 @@ export function registerIpc(
     const picked = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
     if (picked.canceled || !picked.filePath) return { status: 'CANCELED' };
     try {
-      const pdf = await event.sender.printToPDF({
-        pageSize: 'A4',
-        landscape: req.landscape,
-        printBackground: true,
-        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
-      });
+      const pdf = await event.sender.printToPDF(
+        req.pageSizeMm
+          ? {
+              pageSize: { width: req.pageSizeMm.w / 25.4, height: req.pageSizeMm.h / 25.4 },
+              printBackground: true,
+              margins: { top: 0, bottom: 0, left: 0, right: 0 },
+              preferCSSPageSize: true,
+            }
+          : {
+              pageSize: 'A4',
+              landscape: req.landscape,
+              printBackground: true,
+              margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+            },
+      );
       await writeFile(picked.filePath, pdf);
       logger.info({ file: basename(picked.filePath) }, 'report PDF saved');
       return { status: 'SAVED', fileName: basename(picked.filePath) };

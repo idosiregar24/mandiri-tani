@@ -91,6 +91,156 @@ export interface SalesReport {
   returns: { count: number; amount: string };
 }
 
+// ------------------------------------------------- Cetak Laporan Penjualan (format iPOS 5)
+// The iPOS 5 "Laporan Penjualan" form (menu LAP_JL): the same filters and the report types this
+// store can use. Sales-person reports (Sales 1–4) and "Rekap Per Gudang" are left out: the store
+// has no sales-person and one warehouse. Layouts are in renderer features/reports/print.
+
+export const SALES_PRINT_TYPES = [
+  'rekap',
+  'detail',
+  'harian',
+  'pelanggan-detail',
+  'pelanggan-rekap',
+  'retur',
+] as const;
+export type SalesPrintType = (typeof SALES_PRINT_TYPES)[number];
+
+/** Names exactly as in the iPOS report list. */
+export const SALES_PRINT_TITLES: Record<SalesPrintType, string> = {
+  rekap: 'Laporan Penjualan Rekap',
+  detail: 'Laporan Penjualan Detail',
+  harian: 'Laporan Penjualan Harian',
+  'pelanggan-detail': 'Laporan Jual Per Pelanggan Detail',
+  'pelanggan-rekap': 'Laporan Jual Per Pelanggan Rekap',
+  retur: 'Laporan Jual Per Retur',
+};
+
+/** Empty form fields arrive as "" — treat them as "not filtered". */
+const OptionalCode = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().trim().max(60).optional(),
+);
+const OptionalUuid = z.preprocess((v) => (v === '' ? undefined : v), Uuid.optional());
+
+export const SalesPrintQuery = withPeriod({
+  type: z.enum(SALES_PRINT_TYPES).default('rekap'),
+  /** No Transaksi … s/d … (text order, like iPOS). */
+  numberFrom: OptionalCode,
+  numberTo: OptionalCode,
+  /** Kode pelanggan … s/d …. */
+  customerFrom: OptionalCode,
+  customerTo: OptionalCode,
+  warehouseId: OptionalUuid,
+  /** The user who made the sale (iPOS "User"). */
+  userId: OptionalUuid,
+  /** iPOS "Modul": Kasir (KSR) or Penjualan (JL faktur); empty = Semua. */
+  channel: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['KASIR', 'FAKTUR']).optional()),
+});
+export type SalesPrintQuery = z.infer<typeof SalesPrintQuery>;
+
+/** iPOS InfoReport: the company block and the filter lines at the top right. */
+export interface ReportPrintHeader {
+  company: {
+    name: string;
+    address: string | null;
+    phone: string | null;
+    fax: string | null;
+    /** PNG data URL of the store logo, null when none. */
+    logo: string | null;
+  };
+  /** "PERIODE : 01/04/26 - 30/04/26", then one line per active filter. */
+  filters: string[];
+  /** iPOS UserLogin in the page footer. */
+  printedBy: string;
+}
+
+export interface SalesPrintInvoice {
+  id: string;
+  number: string;
+  /** WIB business date, YYYY-MM-DD. */
+  date: string;
+  customerCode: string;
+  customerName: string;
+  customerAddress: string | null;
+  itemCount: string;
+  subtotal: string;
+  /** Note discount as a percentage of the subtotal (iPOS "Pot. %"), 2 decimals. */
+  discountPct: string;
+  discount: string;
+  tax: string;
+  otherCharges: string;
+  total: string;
+  paidCash: string;
+  paidCredit: string;
+}
+
+export interface SalesPrintItem {
+  saleId: string;
+  lineNo: number;
+  sku: string;
+  name: string;
+  qty: string;
+  unit: string;
+  price: string;
+  discountPct: string;
+  total: string;
+}
+
+export interface SalesPrintDay {
+  date: string;
+  count: number;
+  total: string;
+  paidCash: string;
+  paidCredit: string;
+}
+
+export interface SalesPrintCustomer {
+  code: string;
+  name: string;
+  count: number;
+  total: string;
+  paidCash: string;
+  paidCredit: string;
+}
+
+export interface SalesPrintReturn {
+  saleId: string;
+  number: string;
+  date: string;
+  customerCode: string;
+  itemCount: string;
+  total: string;
+}
+
+export interface SalesPrintReport {
+  type: SalesPrintType;
+  title: string;
+  period: ReportPeriod;
+  ownOnly: boolean;
+  header: ReportPrintHeader;
+  /** rekap, detail, pelanggan-detail (ordered by customer), retur (only notes with a return). */
+  invoices: SalesPrintInvoice[];
+  /** detail only. */
+  items: SalesPrintItem[];
+  /** harian only. */
+  days: SalesPrintDay[];
+  /** pelanggan-rekap only. */
+  customers: SalesPrintCustomer[];
+  /** retur only: the returns of the listed notes. */
+  returns: SalesPrintReturn[];
+  /** Over the listed notes. */
+  totals: SalesTotals & { itemCount: string };
+  /** retur only. */
+  returnTotals: { itemCount: string; total: string };
+}
+
+/** Choices for the print form (Owner): users and warehouses. */
+export interface ReportFilterOptions {
+  users: { id: string; username: string; fullName: string }[];
+  warehouses: { id: string; code: string; name: string }[];
+}
+
 // ---------------------------------------------------------------- Laba (FR-FIN-04/05/06)
 
 export const ProfitByItemQuery = withPeriod({ categoryId: Uuid.optional() });

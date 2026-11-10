@@ -150,6 +150,11 @@ export const SavePdfRequest = z.object({
     .max(80)
     .regex(/^[\w\- ]+$/, 'Nama file hanya huruf, angka, spasi, - dan _.'),
   landscape: z.boolean().default(false),
+  /**
+   * Exact paper of a paginated report preview (mm). The page then carries its own margins
+   * (CSS @page margin 0) — otherwise A4 with a 10 mm margin around the screen's print view.
+   */
+  pageSizeMm: z.object({ w: z.number().min(50).max(1200), h: z.number().min(50).max(1200) }).optional(),
 });
 export type SavePdfRequest = z.input<typeof SavePdfRequest>;
 

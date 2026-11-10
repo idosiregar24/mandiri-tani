@@ -13,6 +13,7 @@ import { useReport } from '@/features/reports/api';
 import { RowLimitNotice, Totals } from '@/features/reports/parts';
 import { useReportPeriod, useRowLimit } from '@/features/reports/period';
 import { ReportLayout } from '@/features/reports/ReportLayout';
+import { SalesPrintDialog } from '@/features/reports/SalesPrintDialog';
 import { formatDateTime, formatNumber, formatRupiah } from '@/lib/format';
 import { useCan } from '@/lib/session';
 
@@ -106,6 +107,7 @@ export function SalesReportPage() {
   const [period, setPeriod] = useReportPeriod(ownOnly ? 'today' : 'month');
   const [groupBy, setGroupBy] = useState<SalesGroup>('invoice');
   const [channel, setChannel] = useState<'all' | 'KASIR' | 'FAKTUR'>('all');
+  const [printing, setPrinting] = useState(false);
   const params = { ...period, groupBy, channel: channel === 'all' ? undefined : channel };
   const report = useReport<SalesReport>('/reports/sales', params);
   const d = report.data;
@@ -126,7 +128,16 @@ export function SalesReportPage() {
       exportParams={params}
       fileName="penjualan"
       landscape={groupBy === 'invoice'}
+      onPrint={() => setPrinting(true)}
     >
+      {printing && (
+        <SalesPrintDialog
+          period={period}
+          channel={channel === 'all' ? undefined : channel}
+          ownOnly={ownOnly}
+          onClose={() => setPrinting(false)}
+        />
+      )}
       {report.isError && <Notice tone="error">{report.error.message}</Notice>}
 
       {/* Visual Analytics */}
